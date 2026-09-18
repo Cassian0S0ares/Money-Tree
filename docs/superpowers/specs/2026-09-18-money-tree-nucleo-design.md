@@ -128,6 +128,7 @@ O razão de lançamentos é a fonte de verdade histórica (§5.3.1). Cada linha 
 |---|---|
 | `account_id` | obrigatório |
 | `kind` | `receita`, `despesa`, `transferencia`, `ajuste` |
+| `description` | obrigatória, não vazia (§5.3) |
 | `nature` | `fixa`/`variavel`, apenas quando `kind` é receita ou despesa; nulo nos demais (§5.3) |
 | `amount_cents` | `bigint`, CHECK `> 0`. O tipo determina o efeito contábil, não o sinal |
 | `direction` | `smallint`, `+1` ou `-1` |
