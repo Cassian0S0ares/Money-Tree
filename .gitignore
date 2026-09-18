@@ -1,0 +1,30 @@
+# Segredos — nunca versionar
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Dependências
+node_modules/
+.pnp.*
+
+# Build
+.next/
+out/
+dist/
+build/
+
+# Testes
+coverage/
+
+# Backups e dumps — dado financeiro nunca entra no Git
+*.dump
+*.sql.gz
+*.sql.age
+backups/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
