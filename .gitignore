@@ -17,6 +17,7 @@ build/
 
 # Testes
 coverage/
+.pgdata-test/
 
 # Backups e dumps — dado financeiro nunca entra no Git
 *.dump
@@ -28,3 +29,6 @@ backups/
 .DS_Store
 Thumbs.db
 *.log
+
+# Workspace do executor de planos (scratch, nunca versionado)
+.superpowers/
