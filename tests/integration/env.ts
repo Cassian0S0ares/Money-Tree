@@ -10,3 +10,10 @@ if (existsSync('.env.local')) {
     }
   }
 }
+
+// O código de `src/data/` lê DATABASE_URL. Aqui ela é sempre a do banco
+// embutido, como money_tree_app: se viesse do .env.local apontaria para o
+// Supabase, e se fosse a do superusuário a RLS não seria testada de verdade.
+process.env.DATABASE_URL =
+  process.env.TEST_APP_DATABASE_URL ??
+  'postgresql://money_tree_app:money_tree_app@localhost:55432/money_tree_test'

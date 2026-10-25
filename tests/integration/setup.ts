@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import type EmbeddedPostgres from 'embedded-postgres'
+import postgres from 'postgres'
 import { iniciarPostgresDeTeste, pararPostgresDeTeste } from '../../scripts/test-postgres'
 
 const URL_PADRAO = 'postgresql://postgres:postgres@localhost:55432/money_tree_test'
@@ -28,6 +29,12 @@ export async function setup() {
     ],
     { stdio: 'inherit', env: { ...process.env, DATABASE_URL: url }, shell: true },
   )
+
+  // Em produção a senha do role é definida no painel do provedor. Aqui ela é
+  // fixa, para que `src/data/` conecte como money_tree_app e a RLS valha.
+  const admin = postgres(url, { onnotice: () => {} })
+  await admin`alter role money_tree_app password 'money_tree_app'`
+  await admin.end()
 }
 
 export async function teardown() {
