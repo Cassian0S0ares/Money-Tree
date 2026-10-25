@@ -62,6 +62,8 @@ export interface FiltroLancamentos {
   status?: TransactionStatus
   de?: IsoDate
   ate?: IsoDate
+  /** Só ocorrências de recorrência. */
+  recorrentes?: boolean
   limite?: number
   deslocamento?: number
 }
@@ -159,6 +161,7 @@ export async function listarLancamentos(
         and ${filtro.status ? sql`status = ${filtro.status}` : sql`true`}
         and ${filtro.de ? sql`competence_date >= ${filtro.de}` : sql`true`}
         and ${filtro.ate ? sql`competence_date <= ${filtro.ate}` : sql`true`}
+        and ${filtro.recorrentes ? sql`recurrence_rule_id is not null` : sql`true`}
     `
 
     const linhas = await sql`
@@ -212,7 +215,18 @@ export async function atualizarStatus(
  * liquidado, conciliado ou estornado — ali a regra é definitiva.
  */
 export async function apagarLancamentoPrevisto(userId: string, id: string): Promise<void> {
-  await comoUsuario(userId, (sql) => sql`delete from transactions where id = ${id}`)
+  await comoUsuario(userId, async (sql) => {
+    // Ocorrência de recorrência não se apaga: a geração a criaria de novo na
+    // próxima requisição. Desfazer, nela, é pular (cancelar), e a linha
+    // cancelada é o que impede a volta.
+    const [ocorrencia] = await sql`
+      update transactions set status = 'cancelado', updated_at = now()
+      where id = ${id} and recurrence_rule_id is not null and status = 'previsto'
+      returning id
+    `
+    if (ocorrencia) return
+    await sql`delete from transactions where id = ${id} and recurrence_rule_id is null`
+  })
 }
 
 export interface NovaTransferencia {

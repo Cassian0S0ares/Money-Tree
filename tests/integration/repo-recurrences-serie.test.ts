@@ -268,3 +268,29 @@ describe('proximasContas', () => {
     expect(proximas.itens[0].estimado).toBe(true)
   })
 })
+
+describe('desfazer e filtro', () => {
+  it('desfazer uma ocorrência cancela em vez de apagar, e ela não volta', async () => {
+    const { apagarLancamentoPrevisto } = await import('../../src/data/transactions')
+    const c = await cenario()
+
+    await apagarLancamentoPrevisto(c.usuario, c.lista[0].id)
+    await sqlAdmin`update recurrence_rules set generated_until = null`
+    await garantirOcorrencias(c.usuario, HOJE)
+
+    expect(datas(await ocorrenciasDaRegra(c.usuario, c.regra.id))[0]).toBe('2026-11-05 cancelado')
+  })
+
+  it('a lista filtra só as recorrentes', async () => {
+    const { listarLancamentos } = await import('../../src/data/transactions')
+    const c = await cenario()
+    await criarLancamento(c.usuario, {
+      accountId: c.corrente.id, kind: 'despesa', nature: 'variavel', description: 'Avulsa',
+      amountCents: cents(100), status: 'liquidado', competenceDate: HOJE, settledDate: HOJE,
+    })
+
+    const { itens, total } = await listarLancamentos(c.usuario, { recorrentes: true })
+    expect(total).toBe(3)
+    expect(itens.every((i) => i.recurrenceRuleId !== null)).toBe(true)
+  })
+})

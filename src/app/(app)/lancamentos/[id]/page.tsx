@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { buscarConta } from '../../../../data/accounts'
 import { listarCategorias } from '../../../../data/categories'
 import { buscarLancamento } from '../../../../data/transactions'
+import { buscarRegra } from '../../../../data/recurrences'
+import { descreverRegra } from '../../../../domain/recurrence'
 import { hojeEm } from '../../../../domain/dates'
 import { estaAtrasado } from '../../../../domain/transaction'
 import type { TransactionKind } from '../../../../domain/types'
@@ -11,7 +13,8 @@ import { dataLonga } from '../../../../lib/format'
 import { StatusBadge } from '../../../../components/status-badge'
 import { FormularioConfirmado } from '../../../../components/formulario-confirmado'
 import { Cartao, Dica, Rotulo, Valor, classeEntrada, classesBotao } from '../../../../components/ui'
-import { estornar, marcarLiquidado } from '../acoes'
+import { estornar, marcarLiquidado, pularOcorrenciaAcao } from '../acoes'
+import { EditarOcorrencia, PagarOcorrencia } from '../ocorrencia'
 
 export const metadata = { title: 'Lançamento' }
 
@@ -32,14 +35,16 @@ export default async function PaginaLancamento({
   const lancamento = await buscarLancamento(usuario.id, id)
   if (!lancamento) notFound()
 
-  const [conta, categorias] = await Promise.all([
+  const [conta, categorias, regra] = await Promise.all([
     buscarConta(usuario.id, lancamento.accountId),
     lancamento.categoryId ? listarCategorias(usuario.id, { incluirArquivadas: true }) : [],
+    lancamento.recurrenceRuleId ? buscarRegra(usuario.id, lancamento.recurrenceRuleId) : null,
   ])
   const categoria = categorias.find((c) => c.id === lancamento.categoryId)
   const hoje = hojeEm(usuario.timezone)
   const podeLiquidar = lancamento.status === 'previsto' || lancamento.status === 'pendente'
   const podeEstornar = lancamento.status === 'liquidado' || lancamento.status === 'conciliado'
+  const vencimento = lancamento.dueDate ?? lancamento.competenceDate
 
   return (
     <section className="max-w-2xl space-y-6">
@@ -59,7 +64,24 @@ export default async function PaginaLancamento({
             className="text-3xl font-semibold"
           />
           <StatusBadge status={lancamento.status} atrasado={estaAtrasado(lancamento, hoje)} />
+          {regra?.amountIsEstimate && podeLiquidar && (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+              <span aria-hidden="true">≈ </span>Valor estimado
+            </span>
+          )}
         </div>
+
+        {regra && (
+          <p className="mt-3 text-sm text-slate-700">
+            <span aria-hidden="true" className="text-slate-400">↻ </span>
+            Parte de{' '}
+            <Link href={`/recorrencias/${regra.id}`} className="font-medium text-marca-700 hover:underline">
+              {regra.description}
+            </Link>
+            , {descreverRegra(regra).charAt(0).toLowerCase() + descreverRegra(regra).slice(1)}
+            {lancamento.isException && ' (esta ocorrência foi editada à parte)'}
+          </p>
+        )}
 
         <dl className="mt-6 grid gap-x-6 gap-y-4 border-t border-slate-100 pt-5 text-sm sm:grid-cols-2">
           <div>
@@ -76,6 +98,12 @@ export default async function PaginaLancamento({
             <dt className="text-slate-600">Data</dt>
             <dd className="font-medium text-slate-900">{dataLonga(lancamento.competenceDate)}</dd>
           </div>
+          {lancamento.dueDate && lancamento.dueDate !== lancamento.competenceDate && (
+            <div>
+              <dt className="text-slate-600">Vencimento</dt>
+              <dd className="font-medium text-slate-900">{dataLonga(lancamento.dueDate)}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-slate-600">Pagamento</dt>
             <dd className="font-medium text-slate-900">
@@ -99,7 +127,40 @@ export default async function PaginaLancamento({
         </dl>
       </Cartao>
 
-      {podeLiquidar && (
+      {regra && (
+        <PagarOcorrencia
+          id={lancamento.id}
+          valor={lancamento.amountCents}
+          estimado={regra.amountIsEstimate}
+          hoje={hoje}
+          podePagar={podeLiquidar}
+        />
+      )}
+
+      {regra && podeLiquidar && (
+        <EditarOcorrencia
+          id={lancamento.id}
+          descricao={lancamento.description}
+          valor={lancamento.amountCents}
+          vencimento={vencimento}
+        />
+      )}
+
+      {regra && podeLiquidar && (
+        <FormularioConfirmado
+          action={pularOcorrenciaAcao}
+          titulo="Pular esta ocorrência?"
+          descricao="Ela fica registrada como cancelada e não volta. As próximas continuam normalmente."
+          rotuloConfirmar="Pular"
+        >
+          <input type="hidden" name="id" value={lancamento.id} />
+          <button type="submit" className={classesBotao('secundario')}>
+            Pular esta ocorrência
+          </button>
+        </FormularioConfirmado>
+      )}
+
+      {!regra && podeLiquidar && (
         <Cartao as="section" className="p-6">
           <h2 className="text-base font-semibold text-slate-900">Marcar como pago</h2>
           <p className="mt-1 text-sm text-slate-600">A partir daí ele passa a contar no saldo da conta.</p>

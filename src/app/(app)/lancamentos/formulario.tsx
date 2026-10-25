@@ -8,6 +8,41 @@ import { Aviso, Cartao, Dica, Rotulo, classeEntrada, classesBotao } from '../../
 import type { Conta } from '../../../data/accounts'
 import type { Categoria } from '../../../data/categories'
 import type { TransactionKind } from '../../../domain/types'
+import { isoDate } from '../../../domain/dates'
+import { descreverRegra, ocorrencias, type RegraDatas, type UnidadeRecorrencia } from '../../../domain/recurrence'
+import { dataLonga } from '../../../lib/format'
+
+/** Frequências comuns; a tela de recorrências tem todas as combinações. */
+const FREQUENCIAS: { valor: string; rotulo: string }[] = [
+  { valor: 'semana:1', rotulo: 'Toda semana' },
+  { valor: 'semana:2', rotulo: 'A cada 2 semanas' },
+  { valor: 'mes:1', rotulo: 'Todo mês' },
+  { valor: 'mes:2', rotulo: 'A cada 2 meses' },
+  { valor: 'mes:3', rotulo: 'A cada 3 meses' },
+  { valor: 'mes:6', rotulo: 'A cada 6 meses' },
+  { valor: 'ano:1', rotulo: 'Todo ano' },
+]
+
+/** Mesmo cálculo do servidor, para a pessoa conferir antes de salvar. */
+function previaRepeticao(data: string, frequencia: string, vezes: string, tipo: TransactionKind) {
+  try {
+    const startDate = isoDate(data)
+    const [unit, intervalo] = frequencia.split(':') as [UnidadeRecorrencia, string]
+    const regra: RegraDatas = {
+      startDate,
+      unit,
+      interval: Number(intervalo),
+      dayOfMonth: unit === 'mes' || unit === 'ano' ? Number(startDate.slice(8, 10)) : null,
+      endDate: null,
+      maxOccurrences: vezes ? Number(vezes) : null,
+      weekendPolicy: tipo === 'despesa' ? 'proximo_dia_util' : 'manter',
+    }
+    const proximas = ocorrencias(regra, startDate, isoDate('2100-12-31')).slice(1, 4)
+    return { texto: descreverRegra(regra), proximas }
+  } catch {
+    return null
+  }
+}
 
 const TIPOS: { valor: TransactionKind; rotulo: string; icone: string }[] = [
   { valor: 'despesa', rotulo: 'Despesa', icone: '−' },
@@ -52,6 +87,10 @@ export function FormularioLancamento({
   )
   const [tipo, setTipo] = useState<TransactionKind>('despesa')
   const [status, setStatus] = useState('liquidado')
+  const [repetir, setRepetir] = useState(false)
+  const [frequencia, setFrequencia] = useState('mes:1')
+  const [vezes, setVezes] = useState('')
+  const [dataLancamento, setDataLancamento] = useState(hoje)
   const v = estado.valores ?? {}
   const invalido = (campo: string) => (estado.campoInvalido === campo ? true : undefined)
 
@@ -169,6 +208,7 @@ export function FormularioLancamento({
                   id="competenceDate" name="competenceDate" type="date" required
                   aria-invalid={invalido('competenceDate')}
                   defaultValue={v.competenceDate ?? hoje}
+                  onChange={(e) => setDataLancamento(e.target.value)}
                   className={classeEntrada}
                 />
               </div>
@@ -182,6 +222,7 @@ export function FormularioLancamento({
                 id="competenceDate" name="competenceDate" type="date" required
                 aria-invalid={invalido('competenceDate')}
                 defaultValue={v.competenceDate ?? hoje}
+                onChange={(e) => setDataLancamento(e.target.value)}
                 className={classeEntrada}
               />
             </div>
@@ -245,6 +286,82 @@ export function FormularioLancamento({
             </div>
           )}
 
+          {!ehAjuste && (
+            <div className="rounded-lg border border-slate-200 p-4">
+              <div className="flex items-start gap-3">
+                <input
+                  id="repetir" name="repetir" type="checkbox"
+                  checked={repetir} onChange={(e) => setRepetir(e.target.checked)}
+                  aria-describedby="repetir-dica"
+                  className="mt-0.5 size-5 accent-marca-700"
+                />
+                <div>
+                  <label htmlFor="repetir" className="text-sm font-medium text-slate-900">
+                    <span aria-hidden="true">↻ </span>Repetir
+                  </label>
+                  <p id="repetir-dica" className="text-xs text-slate-600">
+                    Este lançamento vira a primeira vez, e as próximas aparecem como previstas.
+                  </p>
+                </div>
+              </div>
+
+              {repetir && (() => {
+                const [unit, intervalo] = frequencia.split(':')
+                const resumo = previaRepeticao(dataLancamento, frequencia, vezes, tipo)
+                return (
+                  <div className="mt-4 space-y-4">
+                    <input type="hidden" name="repeteUnit" value={unit} />
+                    <input type="hidden" name="repeteInterval" value={intervalo} />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <Rotulo htmlFor="frequencia">Frequência</Rotulo>
+                        <select
+                          id="frequencia" value={frequencia} onChange={(e) => setFrequencia(e.target.value)}
+                          className={classeEntrada}
+                        >
+                          {FREQUENCIAS.map((f) => (
+                            <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Rotulo htmlFor="repeteVezes" opcional>Quantas vezes</Rotulo>
+                        <input
+                          id="repeteVezes" name="repeteVezes" type="number" min={1} inputMode="numeric"
+                          placeholder="Sem fim" value={vezes} onChange={(e) => setVezes(e.target.value)}
+                          className={classeEntrada}
+                        />
+                      </div>
+                    </div>
+                    {!ehTransferencia && (
+                      <label className="flex items-start gap-3 text-sm">
+                        <input name="amountIsEstimate" type="checkbox" className="mt-0.5 size-5 accent-marca-700" />
+                        <span>
+                          <span className="font-medium text-slate-900">O valor muda a cada vez</span>
+                          <span className="block text-xs text-slate-600">Como luz e água: o real é pedido na hora de pagar.</span>
+                        </span>
+                      </label>
+                    )}
+                    <div aria-live="polite" className="rounded-lg bg-marca-50 p-3 text-sm text-marca-900">
+                      {resumo ? (
+                        <>
+                          <p className="font-semibold">{resumo.texto}</p>
+                          {resumo.proximas.length > 0 && (
+                            <p className="mt-1">
+                              Próximas: {resumo.proximas.map((o) => dataLonga(isoDate(o.vencimento))).join('; ')}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p>Escolha a data para ver as próximas.</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
           <div className="grid gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2">
             <div>
               <Rotulo htmlFor="status">Situação</Rotulo>
@@ -280,7 +397,7 @@ export function FormularioLancamento({
 
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={enviando} className={classesBotao('primario')}>
-              {enviando ? 'Salvando…' : 'Salvar lançamento'}
+              {enviando ? 'Salvando…' : repetir && !ehAjuste ? 'Salvar e repetir' : 'Salvar lançamento'}
             </button>
             <Link href="/lancamentos" className={classesBotao('fantasma')}>
               Ver lançamentos

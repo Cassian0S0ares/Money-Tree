@@ -12,7 +12,16 @@ import {
 } from '../../../data/transactions'
 import { registrarEvento } from '../../../data/audit'
 import { exigirUsuario } from '../../../lib/session'
-import { isoDate } from '../../../domain/dates'
+import { hojeEm, isoDate } from '../../../domain/dates'
+import { RegraInvalidaError, type AvisoValorIncomum } from '../../../domain/recurrence'
+import {
+  LimiteRecorrenciaError,
+  criarRegra,
+  editarDestaEmDiante,
+  editarOcorrencia,
+  pagarOcorrencia,
+  pularOcorrencia,
+} from '../../../data/recurrences'
 import { parseBRL } from '../../../domain/money'
 import { LancamentoInvalidoError } from '../../../domain/transaction'
 import { log } from '../../../lib/logger'
@@ -32,6 +41,11 @@ const Formulario = z.object({
   notes: z.string().trim().optional(),
   adjustmentReason: z.string().trim().optional(),
   direcaoAjuste: z.enum(['1', '-1']).optional(),
+  repetir: z.string().optional(),
+  repeteUnit: z.enum(['dia', 'semana', 'mes', 'ano']).optional(),
+  repeteInterval: z.coerce.number().int().min(1).max(366).optional(),
+  repeteVezes: z.string().optional(),
+  amountIsEstimate: z.string().optional(),
 })
 
 export interface EstadoFormularioLancamento {
@@ -77,6 +91,48 @@ export async function salvarLancamento(
 
   if (amountCents <= 0) {
     return { erro: 'O valor precisa ser maior que zero.', campoInvalido: 'valor', valores: bruto }
+  }
+
+  // "Repetir" (spec da fatia 2, seção 8): a regra nasce com este lançamento
+  // como primeira ocorrência, já no estado em que foi registrado.
+  if (d.repetir === 'on' && d.kind !== 'ajuste') {
+    if (!d.accountId) return { erro: 'Escolha a conta.', campoInvalido: 'accountId', valores: bruto }
+    let regraId: string
+    try {
+      const regra = await criarRegra(
+        usuario.id,
+        {
+          kind: d.kind,
+          description: d.description,
+          accountId: d.accountId,
+          toAccountId: d.kind === 'transferencia' ? (d.toAccountId ?? null) : null,
+          categoryId: d.kind === 'transferencia' ? null : d.categoryId || null,
+          nature: d.kind === 'transferencia' ? null : (d.nature ?? 'fixa'),
+          amountCents,
+          amountIsEstimate: d.amountIsEstimate === 'on',
+          unit: d.repeteUnit ?? 'mes',
+          interval: d.repeteInterval ?? 1,
+          startDate: competenceDate,
+          maxOccurrences: d.repeteVezes ? Number(d.repeteVezes) : null,
+        },
+        {
+          hoje: hojeEm(usuario.timezone),
+          primeira: { status: d.status, settledDate },
+        },
+      )
+      regraId = regra.id
+    } catch (erro) {
+      return { erro: mensagemDeErro(erro), valores: bruto }
+    }
+
+    await registrarEvento(usuario.id, {
+      eventType: 'regra.criada', objectType: 'recurrence_rule', objectId: regraId,
+      source: 'usuario', result: 'sucesso',
+    })
+    revalidatePath('/lancamentos')
+    revalidatePath('/recorrencias')
+    revalidatePath('/')
+    redirect(`/recorrencias/${regraId}`)
   }
 
   if (d.kind === 'transferencia') {
@@ -161,7 +217,13 @@ export async function salvarLancamento(
  * dado financeiro (§11), e a tela recebe uma frase genérica.
  */
 function mensagemDeErro(erro: unknown): string {
-  if (erro instanceof LancamentoInvalidoError) return erro.message
+  if (
+    erro instanceof LancamentoInvalidoError ||
+    erro instanceof RegraInvalidaError ||
+    erro instanceof LimiteRecorrenciaError
+  ) {
+    return erro.message
+  }
   log.error('lancamento.falhou', { codigo: (erro as { code?: string })?.code })
   return 'Não foi possível salvar o lançamento. Nada foi gravado; confira os campos e tente de novo.'
 }
@@ -209,4 +271,126 @@ export async function marcarLiquidado(formData: FormData): Promise<void> {
 
   revalidatePath('/lancamentos')
   revalidatePath('/')
+}
+
+export interface EstadoPagamento {
+  erro?: string
+  pago?: boolean
+  aviso?: AvisoValorIncomum | null
+}
+
+/**
+ * Paga uma ocorrência com o valor real. Devolve o aviso de valor incomum em
+ * vez de redirecionar: o valor fica fora da URL, longe de log de proxy (§11).
+ */
+export async function pagarOcorrenciaAcao(
+  _anterior: EstadoPagamento,
+  formData: FormData,
+): Promise<EstadoPagamento> {
+  const usuario = await exigirUsuario()
+  const id = String(formData.get('id'))
+
+  let resultado
+  try {
+    resultado = await pagarOcorrencia(usuario.id, id, {
+      valor: parseBRL(String(formData.get('valor') ?? '')),
+      quando: isoDate(String(formData.get('quando') ?? '')),
+    })
+  } catch (erro) {
+    if (erro instanceof Error && ['ValorInvalidoError', 'DataInvalidaError'].includes(erro.name)) {
+      return { erro: erro.message }
+    }
+    return { erro: mensagemDeErro(erro) }
+  }
+
+  await registrarEvento(usuario.id, {
+    eventType: 'lancamento.liquidado', objectType: 'transaction', objectId: id,
+    source: 'usuario', result: 'sucesso',
+  })
+  revalidatePath(`/lancamentos/${id}`)
+  revalidatePath('/lancamentos')
+  revalidatePath('/recorrencias')
+  revalidatePath('/')
+  return { pago: true, aviso: resultado.aviso }
+}
+
+export async function pularOcorrenciaAcao(formData: FormData): Promise<void> {
+  const usuario = await exigirUsuario()
+  const id = String(formData.get('id'))
+
+  await pularOcorrencia(usuario.id, id)
+  await registrarEvento(usuario.id, {
+    eventType: 'ocorrencia.pulada', objectType: 'transaction', objectId: id,
+    source: 'usuario', result: 'sucesso',
+  })
+  revalidatePath(`/lancamentos/${id}`)
+  revalidatePath('/lancamentos')
+  revalidatePath('/recorrencias')
+  revalidatePath('/')
+}
+
+export interface EstadoEdicaoOcorrencia {
+  erro?: string
+  valores?: Record<string, string>
+  chave?: number
+}
+
+/**
+ * Editar uma ocorrência: só esta (vira exceção) ou desta em diante (divide
+ * a série). A escolha é explícita no formulário, como pede a spec.
+ */
+export async function editarOcorrenciaAcao(
+  _anterior: EstadoEdicaoOcorrencia,
+  formData: FormData,
+): Promise<EstadoEdicaoOcorrencia> {
+  const usuario = await exigirUsuario()
+  const bruto = Object.fromEntries(formData) as Record<string, string>
+  const id = bruto.id
+  const escopo = bruto.escopo === 'serie' ? 'serie' : 'esta'
+  let destino = `/lancamentos/${id}`
+
+  try {
+    const description = bruto.description?.trim()
+    if (!description) return { erro: 'Informe uma descrição', valores: bruto }
+    const amountCents = parseBRL(bruto.valor ?? '')
+    const vencimento = isoDate(bruto.vencimento ?? '')
+
+    if (escopo === 'esta') {
+      await editarOcorrencia(usuario.id, id, { description, amountCents, dueDate: vencimento })
+    } else {
+      const atual = bruto.vencimentoOriginal
+      const regra = await editarDestaEmDiante(
+        usuario.id,
+        id,
+        {
+          description,
+          amountCents,
+          // Data mudada vira a nova âncora da série; sem mudança, a série
+          // segue o calendário que já tinha.
+          ...(vencimento !== atual ? { startDate: vencimento } : {}),
+        },
+        hojeEm(usuario.timezone),
+      )
+      // A ocorrência de origem pode ter sido apagada e regerada; o lugar
+      // estável para mostrar o resultado é a regra.
+      destino = `/recorrencias/${regra.id}`
+    }
+  } catch (erro) {
+    if (erro instanceof Error && ['ValorInvalidoError', 'DataInvalidaError'].includes(erro.name)) {
+      return { erro: erro.message, valores: bruto }
+    }
+    if (erro instanceof Error && /estorno/i.test(erro.message)) {
+      return { erro: 'Esta ocorrência já foi paga. Para corrigir, estorne.', valores: bruto }
+    }
+    return { erro: mensagemDeErro(erro), valores: bruto }
+  }
+
+  await registrarEvento(usuario.id, {
+    eventType: escopo === 'serie' ? 'regra.editada' : 'ocorrencia.editada',
+    objectType: 'transaction', objectId: id, source: 'usuario', result: 'sucesso',
+  })
+  revalidatePath('/lancamentos')
+  revalidatePath('/recorrencias')
+  revalidatePath('/')
+  redirect(destino)
 }

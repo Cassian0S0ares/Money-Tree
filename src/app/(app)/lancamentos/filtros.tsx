@@ -86,6 +86,15 @@ export function Filtros({
           <input id="ate" name="ate" type="date" defaultValue={atual.ate ?? ''} className={classeEntrada} />
         </div>
 
+        <label className="flex min-h-10 items-center gap-2 text-sm text-slate-800 sm:col-span-2 lg:col-span-5">
+          <input
+            type="checkbox" name="recorrentes" value="1"
+            defaultChecked={atual.recorrentes === '1'}
+            className="size-4 accent-marca-700"
+          />
+          <span aria-hidden="true" className="text-slate-400">↻</span> Só recorrentes
+        </label>
+
         <div className="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-5">
           <button type="submit" className={classesBotao('primario')}>Aplicar filtros</button>
           {temFiltro && (

@@ -16,6 +16,14 @@ const GRUPOS = [
   { estado: 'encerrada', titulo: 'Encerradas' },
 ] as const
 
+/**
+ * Regra ativa cujo fim por data já passou terminou de fato: depois de um
+ * "desta em diante", a antiga fica assim. Para quem lê, é encerrada.
+ */
+function estadoVisivel(regra: RegraComProxima, hoje: string) {
+  return regra.status === 'ativa' && regra.endDate !== null && regra.endDate < hoje ? 'encerrada' : regra.status
+}
+
 function Linha({ regra, nomeConta }: { regra: RegraComProxima; nomeConta: Map<string, string> }) {
   return (
     <Link
@@ -54,9 +62,11 @@ export default async function PaginaRecorrencias() {
   const usuario = await exigirUsuario()
   const [regras, contas] = await Promise.all([
     listarRegras(usuario.id, hojeEm(usuario.timezone)),
+
     listarContas(usuario.id, { incluirArquivadas: true }),
   ])
   const nomeConta = new Map(contas.map((conta) => [conta.id, conta.name]))
+  const hoje = hojeEm(usuario.timezone)
 
   return (
     <section className="space-y-8">
@@ -74,7 +84,7 @@ export default async function PaginaRecorrencias() {
         />
       ) : (
         GRUPOS.map(({ estado, titulo }) => {
-          const doGrupo = regras.filter((regra) => regra.status === estado)
+          const doGrupo = regras.filter((regra) => estadoVisivel(regra, hoje) === estado)
           if (doGrupo.length === 0) return null
           return (
             <section key={estado} aria-labelledby={`grupo-${estado}`}>

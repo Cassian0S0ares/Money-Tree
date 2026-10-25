@@ -35,7 +35,11 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
   const hoje = hojeEm(usuario.timezone)
   const nomeConta = new Map(contas.map((conta) => [conta.id, conta.name]))
   const categoria = categorias.find((c) => c.id === regra.categoryId)
-  const estado = ESTADOS[regra.status]
+  // Ativa com fim por data já passado terminou de fato (é o que sobra da
+  // regra antiga depois de um "desta em diante"): mostrada como encerrada.
+  const estadoAtual =
+    regra.status === 'ativa' && regra.endDate !== null && regra.endDate < hoje ? 'encerrada' : regra.status
+  const estado = ESTADOS[estadoAtual]
 
   // Na transferência, um lado basta: o outro é o mesmo dinheiro chegando.
   const ocorrencias = lista.filter((o) => o.kind !== 'transferencia' || o.direction === -1)
@@ -48,11 +52,11 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
   // Sem ocorrência gerada (além dos 90 dias), a data vem da própria regra.
   const vencimento = proxima
     ? (proxima.dueDate ?? proxima.competenceDate)
-    : regra.status === 'ativa'
+    : estadoAtual === 'ativa'
       ? (proximaOcorrencia(regra, hoje)?.vencimento ?? null)
       : null
   const reserva =
-    espacada && regra.status === 'ativa' && vencimento && regra.kind === 'despesa'
+    espacada && estadoAtual === 'ativa' && vencimento && regra.kind === 'despesa'
       ? reservaMensal(regra.amountCents, hoje, vencimento)
       : null
 
@@ -106,7 +110,7 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
               {regra.weekendPolicy === 'proximo_dia_util' ? 'Vence na segunda-feira' : 'Vence no próprio dia'}
             </dd>
           </div>
-          {regra.status === 'ativa' && vencimento && (
+          {estadoAtual === 'ativa' && vencimento && (
             <div>
               <dt className="text-slate-600">Próximo vencimento</dt>
               <dd className="font-medium text-slate-900">{dataLonga(vencimento)}</dd>
@@ -124,24 +128,24 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
         )}
 
         <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-100 pt-5">
-          {proxima && regra.status === 'ativa' && (
+          {proxima && estadoAtual === 'ativa' && (
             <Link href={`/lancamentos/${proxima.id}`} className={classesBotao('secundario')}>
               Mudar valor ou data daqui em diante
             </Link>
           )}
-          {regra.status === 'ativa' && (
+          {estadoAtual === 'ativa' && (
             <form action={pausar}>
               <input type="hidden" name="id" value={regra.id} />
               <button type="submit" className={classesBotao('secundario')}>Pausar</button>
             </form>
           )}
-          {regra.status === 'pausada' && (
+          {estadoAtual === 'pausada' && (
             <form action={retomar}>
               <input type="hidden" name="id" value={regra.id} />
               <button type="submit" className={classesBotao('primario')}>Retomar a partir de hoje</button>
             </form>
           )}
-          {regra.status !== 'encerrada' && (
+          {estadoAtual !== 'encerrada' && (
             <FormularioConfirmado
               action={encerrar}
               titulo={`Encerrar ${regra.description}?`}
@@ -154,7 +158,7 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
             </FormularioConfirmado>
           )}
         </div>
-        {regra.status === 'pausada' && (
+        {estadoAtual === 'pausada' && (
           <p className="mt-3 text-xs text-slate-600">
             Pausada em {dataLonga(regra.pausedAt!)}. Ao retomar, as datas dentro da pausa não voltam.
           </p>
@@ -165,7 +169,7 @@ export default async function PaginaRegra({ params }: { params: Promise<{ id: st
         <h2 id="titulo-abertas" className="mb-3 text-lg font-semibold text-slate-900">Em aberto</h2>
         {emAberto.length === 0 ? (
           <Cartao className="p-6 text-center text-sm text-slate-600">
-            {regra.status === 'ativa' && vencimento
+            {estadoAtual === 'ativa' && vencimento
               ? `Nenhuma ocorrência em aberto. A de ${dataLonga(vencimento)} aparece aqui 90 dias antes.`
               : 'Nenhuma ocorrência em aberto.'}
           </Cartao>

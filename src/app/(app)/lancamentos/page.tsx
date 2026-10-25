@@ -62,6 +62,7 @@ export default async function PaginaLancamentos({
       status: estadoOpcional(texto('estado')),
       de: dataOpcional(texto('de')),
       ate: dataOpcional(texto('ate')),
+      recorrentes: texto('recorrentes') === '1',
       limite: POR_PAGINA,
       deslocamento: (pagina - 1) * POR_PAGINA,
     }),
@@ -70,7 +71,7 @@ export default async function PaginaLancamentos({
   const hoje = hojeEm(usuario.timezone)
   const nomeConta = new Map(contas.map((conta) => [conta.id, conta.name]))
   const nomeCategoria = new Map(categorias.map((categoria) => [categoria.id, categoria.name]))
-  const temFiltro = ['conta', 'categoria', 'estado', 'de', 'ate'].some((chave) => texto(chave))
+  const temFiltro = ['conta', 'categoria', 'estado', 'de', 'ate', 'recorrentes'].some((chave) => texto(chave))
   const totalPaginas = Math.max(1, Math.ceil(resultado.total / POR_PAGINA))
 
   // Agrupado por data de competência, como num extrato. A lista já vem
