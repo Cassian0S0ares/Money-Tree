@@ -15,6 +15,8 @@ const Entrada = z.object({
   senha: z.string().min(1, 'Informe a senha'),
 })
 
+const MAX_FALHAS_ORIGEM = 20
+
 export interface EstadoEntrar {
   erro?: string
   /** Preservado para que o formulário não perca o que foi digitado (§13). */
@@ -35,9 +37,19 @@ export async function entrar(
     return { erro: analise.error.issues[0].message, email: bruto.email }
   }
 
-  const chave = analise.data.email.toLowerCase()
-  const limite = verificarLimite(chave)
-  if (!limite.permitido) {
+  // Dois contadores (ameaça T2). Por conta, 5 falhas: protege a senha de
+  // uma pessoa. Por origem, 20: barra quem testa uma senha comum contra
+  // muitos e-mails, que nunca bateria no limite de cada conta. O teto da
+  // origem é maior porque várias pessoas podem compartilhar um IP.
+  const cabecalhos = await headers()
+  const ip = cabecalhos.get('x-forwarded-for')?.split(',')[0]?.trim() || 'desconhecido'
+  const chaveConta = analise.data.email.toLowerCase()
+  const chaveOrigem = `ip:${ip}`
+
+  const limite = [verificarLimite(chaveConta), verificarLimite(chaveOrigem, MAX_FALHAS_ORIGEM)].find(
+    (resultado) => !resultado.permitido,
+  )
+  if (limite) {
     return {
       erro: `Muitas tentativas. Tente de novo em ${Math.ceil(limite.esperarSegundos / 60)} minutos.`,
       email: bruto.email,
@@ -45,7 +57,10 @@ export async function entrar(
   }
 
   const usuario = await verificarSenha(analise.data.email, analise.data.senha)
-  registrarTentativa(chave, usuario !== null)
+  registrarTentativa(chaveConta, usuario !== null)
+  // Sucesso não zera a origem: quem tem uma conta válida limparia o próprio
+  // rastro entre tentativas contra as contas dos outros.
+  if (!usuario) registrarTentativa(chaveOrigem, false)
 
   if (!usuario) {
     // Mensagem única: dizer "e-mail não cadastrado" entrega quais contas
@@ -59,10 +74,9 @@ export async function entrar(
   const anterior = await lerCookieSessao()
   if (anterior) await encerrarSessao(anterior)
 
-  const cabecalhos = await headers()
   const { token, expiraEm } = await abrirSessao(usuario.id, {
     userAgent: cabecalhos.get('user-agent') ?? undefined,
-    ip: cabecalhos.get('x-forwarded-for') ?? undefined,
+    ip,
   })
 
   await definirCookieSessao(token, expiraEm)

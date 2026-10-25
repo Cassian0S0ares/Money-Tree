@@ -14,7 +14,10 @@ interface Registro {
  */
 const registros = new Map<string, Registro>()
 
-export function verificarLimite(chave: string): { permitido: boolean; esperarSegundos: number } {
+export function verificarLimite(
+  chave: string,
+  maximo = MAX_FALHAS,
+): { permitido: boolean; esperarSegundos: number } {
   const registro = registros.get(chave)
   if (!registro) return { permitido: true, esperarSegundos: 0 }
 
@@ -24,7 +27,7 @@ export function verificarLimite(chave: string): { permitido: boolean; esperarSeg
     return { permitido: true, esperarSegundos: 0 }
   }
 
-  if (registro.falhas >= MAX_FALHAS) {
+  if (registro.falhas >= maximo) {
     return { permitido: false, esperarSegundos: Math.ceil((JANELA_MS - decorrido) / 1000) }
   }
 

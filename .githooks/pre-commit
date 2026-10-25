@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Barra o commit que levaria um segredo para o histórico (ameaça T8).
+# Ativar uma vez por clone:  git config core.hooksPath .githooks
+exec npx --no-install tsx scripts/verificar-segredos.ts --staged

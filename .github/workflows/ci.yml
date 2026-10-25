@@ -1,0 +1,39 @@
+# Integração contínua (ameaças T8 e T13 do modelo de ameaças).
+# Nenhum segredo é necessário: os testes de integração sobem um Postgres
+# embutido, e o build não precisa da URL do banco.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Lockfile fixo: npm ci falha se package.json e lockfile divergirem.
+      - run: npm ci
+
+      - name: Segredos no repositório
+        run: npm run seguranca:segredos
+
+      - name: Dependências vulneráveis
+        run: npm run seguranca:auditoria
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build

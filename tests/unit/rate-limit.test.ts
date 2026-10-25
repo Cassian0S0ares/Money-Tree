@@ -45,3 +45,13 @@ describe('limite de tentativas', () => {
     expect(verificarLimite('pessoa@exemplo.com').permitido).toBe(true)
   })
 })
+
+describe('limite por origem', () => {
+  it('aceita um teto próprio, maior que o da conta', () => {
+    for (let i = 0; i < 19; i++) registrarTentativa('ip:203.0.113.7', false)
+    expect(verificarLimite('ip:203.0.113.7', 20).permitido).toBe(true)
+
+    registrarTentativa('ip:203.0.113.7', false)
+    expect(verificarLimite('ip:203.0.113.7', 20).permitido).toBe(false)
+  })
+})
