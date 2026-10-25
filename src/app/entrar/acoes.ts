@@ -54,6 +54,11 @@ export async function entrar(
     return { erro: 'E-mail ou senha incorretos.', email: bruto.email }
   }
 
+  // Rotação: o token que já estava no navegador morre aqui. Sem isso, um
+  // token plantado antes do login (fixação de sessão) continuaria válido.
+  const anterior = await lerCookieSessao()
+  if (anterior) await encerrarSessao(anterior)
+
   const cabecalhos = await headers()
   const { token, expiraEm } = await abrirSessao(usuario.id, {
     userAgent: cabecalhos.get('user-agent') ?? undefined,
