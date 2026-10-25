@@ -22,9 +22,9 @@ export async function comoUsuario<T>(
 
 /**
  * Transação sem identidade, para o que acontece antes do login: procurar o
- * usuário pelo e-mail e validar a senha. A RLS bloqueia tudo aqui, então as
- * consultas usadas neste caminho rodam com privilégio elevado e ficam
- * restritas a `src/data/users.ts` e `src/data/sessions.ts`.
+ * usuário pelo e-mail e validar a sessão. A RLS bloqueia toda tabela aqui:
+ * o único acesso é pelas funções `auth_*` da migração 006, e elas só são
+ * chamadas de `src/data/users.ts` e `src/data/sessions.ts`.
  */
 export async function semUsuario<T>(
   fn: (tx: postgres.TransactionSql) => Promise<T>,

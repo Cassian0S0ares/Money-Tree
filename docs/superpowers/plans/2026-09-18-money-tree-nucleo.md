@@ -4757,6 +4757,8 @@ esses dados — a omissão é estrutural."
 
 ### Task 16: Autenticação, sessão e bloqueio por inatividade
 
+> **Correção feita na execução.** O código abaixo usa `semUsuario` para ler `users` e `sessions` antes do login. Com a aplicação conectada como `money_tree_app` e RLS forçada, essas consultas não enxergam nenhuma linha: o login nunca funcionaria em produção, e os testes só passariam porque `db.ts` usava a URL do superusuário. Implementado assim: criar usuário (com `id` gerado na aplicação), abrir sessão e encerrar todas rodam em `comoUsuario`; buscar credencial por e-mail, validar e encerrar sessão por token usam três funções `SECURITY DEFINER` (`auth_buscar_credencial`, `auth_validar_sessao`, `auth_encerrar_sessao`) em `migrations/006_auth_funcoes.sql`, com `search_path` fixo e execução só para `money_tree_app`. `HASH_FALSO` virou cálculo preguiçoso. Os arquivos em `src/data/users.ts` e `src/data/sessions.ts` são a fonte de verdade.
+
 **Files:**
 - Create: `src/data/users.ts`, `src/data/sessions.ts`, `src/lib/session.ts`
 - Test: `tests/integration/auth.test.ts`
