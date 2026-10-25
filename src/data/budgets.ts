@@ -266,7 +266,7 @@ export async function resumoOrcamento(
         }
       })
       .filter((c) => !c.arquivada || c.realizado > 0 || c.comprometido > 0)
-      .map(({ arquivada: _arquivada, ...resto }) => resto)
+      .map(({ categoriaId, nome, realizado, comprometido }) => ({ categoriaId, nome, realizado, comprometido }))
 
     const somar = (valores: number[]) => cents(valores.reduce((total, v) => total + v, 0))
     const disponivelTotal = somar(itens.map((i) => i.disponivel))
