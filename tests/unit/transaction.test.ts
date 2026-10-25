@@ -191,7 +191,7 @@ describe('estaAtrasado', () => {
 })
 
 describe('MOVEM_SALDO', () => {
-  it('só liquidado e conciliado movem saldo', () => {
-    expect(MOVEM_SALDO).toEqual(['liquidado', 'conciliado'])
+  it('liquidado, conciliado e estornado movem saldo', () => {
+    expect(MOVEM_SALDO).toEqual(['liquidado', 'conciliado', 'estornado'])
   })
 })

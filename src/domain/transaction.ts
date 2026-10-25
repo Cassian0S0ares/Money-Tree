@@ -25,10 +25,17 @@ export const STATUS_INICIAIS = [
   'liquidado',
 ] as const satisfies readonly TransactionStatus[]
 
-/** Só estes dois movem o saldo. Ver PRODUCT.md §6.1. */
+/**
+ * O que move saldo. Ver PRODUCT.md §6.1.
+ *
+ * `estornado` continua contando: o dinheiro de fato saiu na data em que foi
+ * liquidado, e quem o anula é a linha de estorno, de sinal oposto. Se o
+ * original deixasse de contar, a correção valeria em dobro.
+ */
 export const MOVEM_SALDO = [
   'liquidado',
   'conciliado',
+  'estornado',
 ] as const satisfies readonly TransactionStatus[]
 
 const TRANSICOES: Record<TransactionStatus, readonly TransactionStatus[]> = {

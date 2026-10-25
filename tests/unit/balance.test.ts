@@ -13,7 +13,7 @@ function linha(
 }
 
 describe('calcularSaldo', () => {
-  it('soma apenas liquidado e conciliado', () => {
+  it('soma liquidado, conciliado e estornado; ignora o que não saiu do papel', () => {
     const { balanceCents } = calcularSaldo({
       initialBalanceCents: cents(100_00),
       linhas: [
@@ -22,11 +22,11 @@ describe('calcularSaldo', () => {
         linha(-999_00, 'previsto', null),
         linha(-999_00, 'pendente', null),
         linha(-999_00, 'cancelado', null),
-        linha(-999_00, 'estornado', null),
+        linha(-10_00, 'estornado'),
       ],
       lastReconciledAt: null,
     })
-    expect(balanceCents).toBe(175_00)
+    expect(balanceCents).toBe(165_00)
   })
 
   it('sem lançamentos, o saldo é o inicial', () => {
@@ -145,15 +145,17 @@ describe('invariantes', () => {
           lastReconciledAt: null,
         }).balanceCents
 
-        // O original vira `estornado` e deixa de contar; a linha de estorno
-        // entra liquidada com o sinal oposto.
+        // O original vira `estornado` e continua contando — o dinheiro saiu
+        // naquela data. A linha de estorno entra liquidada com o sinal oposto
+        // e o compensa. Se o original deixasse de contar, a correção valeria
+        // em dobro.
         const comEstorno = calcularSaldo({
           initialBalanceCents: cents(500_00),
-          linhas: [linha(-valor, 'estornado', null), linha(valor, 'liquidado')],
+          linhas: [linha(-valor, 'estornado'), linha(valor, 'liquidado')],
           lastReconciledAt: null,
         }).balanceCents
 
-        expect(comEstorno).toBe(semNada + valor)
+        expect(comEstorno).toBe(semNada)
       }),
     )
   })

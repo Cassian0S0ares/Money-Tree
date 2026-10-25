@@ -4211,23 +4211,11 @@ Expected: PASS — 9 testes.
 
 Um detalhe que pode surpreender: o `update` que marca o original como `estornado` precisa vir **depois** da inserção do estorno, porque a constraint `tx_liquidacao_coerente` não permite `estornado` com `settled_date` preenchida. Confira a ordem se o teste reclamar de constraint.
 
-- [ ] **Step 5: Ajustar a constraint, se necessário**
+- [ ] **Step 5: Ajustar a constraint e a semântica do estorno**
 
-Se o teste de estorno falhar com `tx_liquidacao_coerente`, o original liquidado não pode virar `estornado` mantendo `settled_date`. Corrija a migração 003 trocando a constraint por:
-
-```sql
-  constraint tx_liquidacao_coerente check (
-    (status in ('liquidado', 'conciliado') and settled_date is not null)
-    or
-    (status in ('previsto', 'pendente', 'cancelado') and settled_date is null)
-    or
-    -- Estornado preserva a data de quando foi liquidado: apagá-la perderia
-    -- a informação de quando o dinheiro de fato saiu.
-    (status = 'estornado')
-  )
-```
-
-Crie isso como `migrations/005_ajusta_liquidacao_estornado.sql` em vez de editar a 003 — migração aplicada não se reescreve.
+> **Correção feita na execução.** A versão original deste passo só afrouxava a constraint, mas o teste de estorno revelou um erro maior: o original `estornado` deixava de contar **e** a linha oposta entrava liquidada, aplicando a correção duas vezes (saldo 105.000 em vez de 100.000). O teste de propriedade da Task 5 tinha codificado o mesmo erro (`semNada + valor`).
+>
+> Resolução, em `migrations/005_estornado_move_saldo.sql` e no domínio: `estornado` entra em `MOVEM_SALDO` — o dinheiro de fato saiu naquela data — e a linha de estorno o compensa. Soma zero, como pede a spec ("estorno anula exatamente o efeito do original"). Como `estornado` só nasce de `liquidado` ou `conciliado`, a constraint passa a exigir `settled_date` nele. A view `account_balances` é recriada com o mesmo filtro.
 
 - [ ] **Step 6: Commit**
 
