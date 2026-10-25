@@ -6,6 +6,7 @@ import {
   RegraInvalidaError,
   descreverRegra,
   ocorrencias,
+  proximaOcorrencia,
   validarRegra,
   type RegraDatas,
 } from '../../src/domain/recurrence'
@@ -225,5 +226,23 @@ describe('invariantes (spec 6.2)', () => {
         expect(lista.length).toBeLessThanOrEqual(r.maxOccurrences!)
       }),
     )
+  })
+})
+
+describe('proximaOcorrencia', () => {
+  it('acha a próxima mesmo além do horizonte de geração', () => {
+    const ipva = regra({ startDate: isoDate('2027-03-15'), unit: 'ano' })
+    expect(proximaOcorrencia(ipva, isoDate('2026-10-25'))?.vencimento).toBe('2027-03-15')
+    expect(proximaOcorrencia(ipva, isoDate('2027-03-16'))?.nominal).toBe('2028-03-15')
+  })
+
+  it('a cada 5 anos também', () => {
+    const r = regra({ startDate: isoDate('2020-06-10'), unit: 'ano', interval: 5 })
+    expect(proximaOcorrencia(r, isoDate('2026-10-25'))?.nominal).toBe('2030-06-10')
+  })
+
+  it('regra já terminada não tem próxima', () => {
+    const r = regra({ startDate: isoDate('2026-01-05'), unit: 'mes', maxOccurrences: 2 })
+    expect(proximaOcorrencia(r, isoDate('2026-10-25'))).toBeNull()
   })
 })

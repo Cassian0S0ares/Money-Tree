@@ -8,6 +8,7 @@ import {
   RegraInvalidaError,
   ocorrencias,
   planejarEdicaoSerie,
+  proximaOcorrencia,
   validarRegra,
   valorIncomum,
   type AvisoValorIncomum,
@@ -306,7 +307,12 @@ export interface RegraComProxima extends Regra {
   proximoVencimento: IsoDate | null
 }
 
-export async function listarRegras(userId: string): Promise<RegraComProxima[]> {
+/**
+ * Regras com o próximo vencimento. Quando a próxima ocorrência ainda não foi
+ * gerada (além dos 90 dias, como o IPVA de março visto em outubro), a data
+ * vem do cálculo da regra.
+ */
+export async function listarRegras(userId: string, hoje?: IsoDate): Promise<RegraComProxima[]> {
   return comoUsuario(userId, async (sql) => {
     const linhas = await sql`
       select r.*, (
@@ -317,10 +323,13 @@ export async function listarRegras(userId: string): Promise<RegraComProxima[]> {
       from recurrence_rules r
       order by r.status, lower(r.description)
     `
-    return linhas.map((linha) => ({
-      ...paraRegra(linha),
-      proximoVencimento: dataOuNulo(linha.proximo_vencimento),
-    }))
+    return linhas.map((linha) => {
+      const regra = paraRegra(linha)
+      const gerada = dataOuNulo(linha.proximo_vencimento)
+      const calculada =
+        !gerada && hoje && regra.status === 'ativa' ? proximaOcorrencia(regra, hoje)?.vencimento ?? null : null
+      return { ...regra, proximoVencimento: gerada ?? calculada }
+    })
   })
 }
 

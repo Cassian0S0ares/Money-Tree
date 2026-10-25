@@ -323,3 +323,17 @@ export function reservaMensal(
   // Divisão inteira arredondando para cima, sem ponto flutuante.
   return { meses, porMes: Math.floor((valor + meses - 1) / meses) as Cents }
 }
+
+const DIAS_POR_UNIDADE: Record<UnidadeRecorrencia, number> = { dia: 1, semana: 7, mes: 31, ano: 366 }
+
+/**
+ * A primeira ocorrência com data nominal em `aPartirDe` ou depois, calculada
+ * da regra, sem depender de linha gerada. Serve para o que vem além do
+ * horizonte de 90 dias: o IPVA de março, visto em outubro.
+ */
+export function proximaOcorrencia(regra: RegraDatas, aPartirDe: IsoDate): Ocorrencia | null {
+  // Um passo da regra, com folga, sempre contém a próxima ocorrência.
+  const janela = DIAS_POR_UNIDADE[regra.unit] * regra.interval + 1
+  const de = aPartirDe < regra.startDate ? regra.startDate : aPartirDe
+  return ocorrencias(regra, de, somarDias(de, janela))[0] ?? null
+}

@@ -26,7 +26,7 @@ export function ItemLancamento({
   mostrarData?: boolean
 }) {
   const detalhes = [
-    mostrarData ? dataCurta(item.competenceDate) : null,
+    mostrarData ? dataCurta(item.dueDate ?? item.competenceDate) : null,
     nomeConta,
     nomeCategoria,
     item.kind === 'transferencia' ? 'Transferência' : null,
@@ -39,7 +39,15 @@ export function ItemLancamento({
       className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
     >
       <span className="min-w-0">
-        <span className="block truncate font-medium text-slate-900">{item.description}</span>
+        <span className="block truncate font-medium text-slate-900">
+          {item.recurrenceRuleId && (
+            <>
+              <span aria-hidden="true" className="mr-1 text-slate-400">↻</span>
+              <span className="sr-only">Recorrente: </span>
+            </>
+          )}
+          {item.description}
+        </span>
         <span className="block truncate text-xs text-slate-600">{detalhes.join(' · ')}</span>
       </span>
       {/* No celular o selo fica embaixo do valor: estado crítico como

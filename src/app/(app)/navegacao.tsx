@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const LINKS = [
   { href: '/', rotulo: 'Saldos' },
   { href: '/lancamentos', rotulo: 'Lançamentos' },
+  { href: '/recorrencias', rotulo: 'Recorrências' },
   { href: '/contas', rotulo: 'Contas' },
   { href: '/categorias', rotulo: 'Categorias' },
   { href: '/configuracoes', rotulo: 'Configurações' },
