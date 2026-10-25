@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { listarContasComSaldo } from '../../data/accounts'
 import { listarLancamentos } from '../../data/transactions'
+import { proximasContas } from '../../data/recurrences'
+import { ProximasContas } from '../../components/proximas-contas'
 import { somarSaldos } from '../../domain/balance'
 import { hojeEm } from '../../domain/dates'
 import { estaAtrasado } from '../../domain/transaction'
@@ -12,11 +14,17 @@ import { Cartao, LinkBotao, SeloEstimado, Valor } from '../../components/ui'
 
 export const metadata = { title: 'Saldos' }
 
+const DIAS_PROXIMAS = 30
+
 export default async function PaginaSaldos() {
   const usuario = await exigirUsuario()
-  const [contas, recentes] = await Promise.all([
+  const hoje = hojeEm(usuario.timezone)
+  const [contas, recentes, proximas] = await Promise.all([
     listarContasComSaldo(usuario.id),
-    listarLancamentos(usuario.id, { limite: 5 }),
+    // "Últimos" é até hoje: sem o corte, as ocorrências previstas dos
+    // próximos meses tomariam a lista.
+    listarLancamentos(usuario.id, { limite: 5, ate: hoje }),
+    proximasContas(usuario.id, hoje, DIAS_PROXIMAS),
   ])
 
   if (contas.length === 0) {
@@ -29,7 +37,6 @@ export default async function PaginaSaldos() {
     )
   }
 
-  const hoje = hojeEm(usuario.timezone)
   const disponiveis = contas.filter((conta) => conta.includeInAvailable && conta.isLiquid)
   const total = somarSaldos(disponiveis)
   const patrimonio = somarSaldos(contas.filter((conta) => conta.includeInNetWorth))
@@ -70,6 +77,14 @@ export default async function PaginaSaldos() {
           </dl>
         </Cartao>
       </section>
+
+      <ProximasContas
+        itens={proximas.itens}
+        aPagar={proximas.aPagar}
+        aReceber={proximas.aReceber}
+        dias={DIAS_PROXIMAS}
+        nomeConta={nomeConta}
+      />
 
       <section aria-labelledby="titulo-contas">
         <div className="mb-3 flex items-center justify-between">
