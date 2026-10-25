@@ -238,3 +238,46 @@ describe('estorno e exclusão', () => {
     expect(conciliado.status).toBe('conciliado')
   })
 })
+
+describe('transferência prevista muda de estado inteira', () => {
+  async function transferenciaPrevista() {
+    const dados = await cenario()
+    await criarTransferencia(dados.usuario, {
+      fromAccountId: dados.corrente.id,
+      toAccountId: dados.poupanca.id,
+      amountCents: cents(30_000),
+      description: 'Reserva do mês',
+      competenceDate: isoDate('2026-09-18'),
+      settledDate: null,
+      status: 'previsto',
+    })
+    const { itens } = await listarLancamentos(dados.usuario, {})
+    return { ...dados, origem: itens.find((i) => i.direction === -1)!, destino: itens.find((i) => i.direction === 1)! }
+  }
+
+  const total = async (usuario: string) =>
+    (await listarContasComSaldo(usuario)).reduce((soma, c) => soma + c.balanceCents, 0)
+
+  for (const lado of ['origem', 'destino'] as const) {
+    it(`liquidar pelo lado ${lado} liquida os dois e não muda o total`, async () => {
+      const t = await transferenciaPrevista()
+      const antes = await total(t.usuario)
+
+      await atualizarStatus(t.usuario, t[lado].id, 'liquidado', isoDate('2026-09-20'))
+
+      const { itens } = await listarLancamentos(t.usuario, {})
+      expect(itens.map((i) => i.status)).toEqual(['liquidado', 'liquidado'])
+      expect(itens.every((i) => i.settledDate === '2026-09-20')).toBe(true)
+      // Um lado só faria o dinheiro sair da corrente sem entrar na poupança.
+      expect(await total(t.usuario)).toBe(antes)
+    })
+  }
+
+  it('cancelar também vale para o grupo', async () => {
+    const t = await transferenciaPrevista()
+    await atualizarStatus(t.usuario, t.origem.id, 'cancelado', null)
+
+    const { itens } = await listarLancamentos(t.usuario, {})
+    expect(itens.map((i) => i.status)).toEqual(['cancelado', 'cancelado'])
+  })
+})

@@ -164,25 +164,36 @@ export async function listarLancamentos(
   })
 }
 
+/**
+ * Mudança de estado. Num lado de transferência, vale para o grupo inteiro
+ * (§5.3): liquidar só um lado tiraria o dinheiro da origem sem pô-lo no
+ * destino. As linhas ficam travadas até o fim, como no estorno.
+ */
 export async function atualizarStatus(
   userId: string,
   id: string,
   novoStatus: TransactionStatus,
   settledDate: IsoDate | null,
 ): Promise<Lancamento> {
-  const atual = await buscarLancamento(userId, id)
-  if (!atual) throw new Error('Lançamento não encontrado')
-
-  assertTransicao(atual.status, novoStatus)
-
   return comoUsuario(userId, async (sql) => {
-    const [linha] = await sql`
+    const linhas = await sql`
+      select * from transactions
+      where id = ${id}
+         or transfer_group_id = (select transfer_group_id from transactions where id = ${id})
+      for update
+    `
+    const lados = linhas.map(paraLancamento)
+    if (!lados.some((lado) => lado.id === id)) throw new Error('Lançamento não encontrado')
+
+    for (const lado of lados) assertTransicao(lado.status, novoStatus)
+
+    const atualizadas = await sql`
       update transactions
       set status = ${novoStatus}, settled_date = ${settledDate}, updated_at = now()
-      where id = ${id}
+      where id in ${sql(lados.map((lado) => lado.id))}
       returning *
     `
-    return paraLancamento(linha)
+    return paraLancamento(atualizadas.find((linha) => linha.id === id)!)
   })
 }
 
