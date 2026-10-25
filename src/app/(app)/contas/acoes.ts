@@ -30,6 +30,8 @@ export interface EstadoFormularioConta {
   campoInvalido?: string
   /** O que o usuário digitou, para o formulário não esvaziar (§13). */
   valores?: Record<string, string>
+  /** Incrementada no cliente a cada resposta, para remontar o formulário. */
+  chave?: number
 }
 
 export async function salvarConta(

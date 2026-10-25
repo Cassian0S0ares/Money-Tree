@@ -21,7 +21,16 @@ const LIQUIDOS = new Set(['corrente', 'pagamento', 'poupanca', 'carteira'])
 const INICIAL: EstadoFormularioConta = {}
 
 export function FormularioConta({ conta }: { conta?: Conta }) {
-  const [estado, acao, enviando] = useActionState(salvarConta, INICIAL)
+  // O React 19 reseta o formulário depois da ação, e <select> não volta ao
+  // defaultValue. Remontar a cada resposta faz todo campo reaplicar o que o
+  // usuário tinha digitado (§13).
+  const [estado, acao, enviando] = useActionState(
+    async (anterior: EstadoFormularioConta, formData: FormData) => ({
+      ...(await salvarConta(anterior, formData)),
+      chave: (anterior.chave ?? 0) + 1,
+    }),
+    INICIAL,
+  )
   const v = estado.valores ?? {}
 
   // Na conta nova, o padrão de "incluir no disponível" segue o tipo: cartão
@@ -32,7 +41,7 @@ export function FormularioConta({ conta }: { conta?: Conta }) {
   )
 
   return (
-    <form action={acao} className="max-w-lg space-y-4">
+    <form key={estado.chave} action={acao} className="max-w-lg space-y-4">
       {conta && <input type="hidden" name="id" value={conta.id} />}
 
       {estado.erro && (
