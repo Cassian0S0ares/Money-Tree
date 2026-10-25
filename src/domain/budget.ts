@@ -99,3 +99,90 @@ export function disponiveis(entrada: {
 
   return resultado
 }
+
+export type Ritmo = 'abaixo' | 'no_ritmo' | 'acima'
+export type Situacao = 'dentro' | 'atencao' | 'vai_estourar' | 'estourado'
+
+export interface Avaliacao {
+  /** Disponível menos realizado e comprometido. Negativo quando passou. */
+  restante: Cents
+  /** Realizado sobre o disponível, inteiro; nulo com limite zero. */
+  percentual: number | null
+  /** Quanto já era esperado gastar até hoje; nulo fora do período corrente. */
+  esperadoHoje: Cents | null
+  ritmo: Ritmo | null
+  /** Gasto previsto para o fim do período; nulo antes do 7º dia e fora do corrente. */
+  previsto: Cents | null
+  estouroPrevisto: Cents | null
+  situacao: Situacao
+  motivo: 'comprometido' | 'ritmo' | null
+}
+
+/** Ritmo tolera 10% do disponível (decisão 6 da spec). */
+const TOLERANCIA_RITMO = 10
+/** Previsão só a partir do 7º dia (decisão 5): antes, uma compra vira alarme. */
+const DIAS_MINIMOS_PREVISAO = 7
+
+/**
+ * Situação de uma categoria num período (spec 6.3 a 6.5). Centavos inteiros
+ * do começo ao fim: frações de centavo são truncadas.
+ *
+ * A previsão projeta só o gasto variável. O fixo (o aluguel pago no dia 5)
+ * entra como aconteceu, e o comprometido (o que já está previsto ou
+ * pendente) entra como é; nada é contado duas vezes.
+ */
+export function avaliar(entrada: {
+  disponivel: Cents
+  realizado: Cents
+  realizadoVariavel: Cents
+  comprometido: Cents
+  periodo: Periodo
+  hoje: IsoDate
+}): Avaliacao {
+  const { disponivel, realizado, realizadoVariavel, comprometido, periodo, hoje } = entrada
+
+  const restante = (disponivel - realizado - comprometido) as Cents
+  const percentual = disponivel > 0 ? Math.round((realizado * 100) / disponivel) : null
+
+  const corrente = hoje >= periodo.inicio && hoje <= periodo.fim
+  let esperadoHoje: Cents | null = null
+  let ritmo: Ritmo | null = null
+  let previsto: Cents | null = null
+
+  if (corrente) {
+    const dias = diasDoPeriodo(periodo)
+    const decorridos = Math.round((Date.parse(hoje) - Date.parse(periodo.inicio)) / DIA) + 1
+
+    esperadoHoje = Math.floor((disponivel * decorridos) / dias) as Cents
+    const tolerancia = Math.floor((disponivel * TOLERANCIA_RITMO) / 100)
+    ritmo =
+      realizado < esperadoHoje - tolerancia
+        ? 'abaixo'
+        : realizado > esperadoHoje + tolerancia
+          ? 'acima'
+          : 'no_ritmo'
+
+    if (decorridos >= DIAS_MINIMOS_PREVISAO) {
+      const projecao = Math.floor((realizadoVariavel * (dias - decorridos)) / decorridos)
+      previsto = (realizado + comprometido + projecao) as Cents
+    }
+  }
+
+  const estouroPrevisto = previsto === null ? null : (Math.max(0, previsto - disponivel) as Cents)
+
+  let situacao: Situacao = 'dentro'
+  let motivo: Avaliacao['motivo'] = null
+  if (realizado > disponivel) {
+    situacao = 'estourado'
+  } else if (estouroPrevisto !== null && estouroPrevisto > 0) {
+    situacao = 'vai_estourar'
+  } else if (realizado + comprometido > disponivel) {
+    situacao = 'atencao'
+    motivo = 'comprometido'
+  } else if (ritmo === 'acima') {
+    situacao = 'atencao'
+    motivo = 'ritmo'
+  }
+
+  return { restante, percentual, esperadoHoje, ritmo, previsto, estouroPrevisto, situacao, motivo }
+}
