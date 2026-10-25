@@ -4,7 +4,7 @@
 **Contrato de produto:** `PRODUCT.md` v0.2
 **Depende de:** Fatia 1 (`2026-09-18-money-tree-nucleo-design.md`), concluída
 **Escopo:** regras de repetição, ocorrências previstas, vencimentos e próximas contas
-**Estado:** rascunho para revisão; não gerar plano antes de responder à seção 12
+**Estado:** aprovado em 2026-10-25 com as cinco recomendações da seção 12
 
 ---
 
