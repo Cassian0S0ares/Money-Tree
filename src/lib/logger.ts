@@ -30,6 +30,12 @@ const PROIBIDAS = new Set([
   'institution',
   'email',
   'prompt',
+  // Campos de erro do Postgres e do driver capazes de carregar a linha ou
+  // os parâmetros da consulta (com `debug` ligado no postgres.js).
+  'detail',
+  'query',
+  'parameters',
+  'args',
 ])
 
 const MARCA = '[redigido]'

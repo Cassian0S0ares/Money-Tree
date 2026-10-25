@@ -45,3 +45,23 @@ describe('redigir', () => {
     expect(() => redigir(circular)).not.toThrow()
   })
 })
+
+describe('redigir erros de banco', () => {
+  it('apaga detail, query e parameters, preservando o código', () => {
+    expect(
+      redigir({
+        code: '23514',
+        constraint_name: 'tx_despesa_sai',
+        detail: 'Failing row contains (..., 987654, ...)',
+        query: 'insert into transactions ...',
+        parameters: ['Farmácia', 987654],
+      }),
+    ).toEqual({
+      code: '23514',
+      constraint_name: 'tx_despesa_sai',
+      detail: '[redigido]',
+      query: '[redigido]',
+      parameters: '[redigido]',
+    })
+  })
+})
