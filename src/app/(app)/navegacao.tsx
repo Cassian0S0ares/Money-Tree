@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/', rotulo: 'Saldos' },
   { href: '/lancamentos', rotulo: 'Lançamentos' },
   { href: '/recorrencias', rotulo: 'Recorrências' },
+  { href: '/orcamentos', rotulo: 'Orçamentos' },
   { href: '/contas', rotulo: 'Contas' },
   { href: '/categorias', rotulo: 'Categorias' },
   { href: '/configuracoes', rotulo: 'Configurações' },

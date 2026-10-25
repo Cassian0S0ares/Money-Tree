@@ -74,3 +74,16 @@ export function valorParaEntrada(valor: Cents): string {
   const centavos = String(absoluto % 100).padStart(2, '0')
   return `${valor < 0 ? '-' : ''}${reais},${centavos}`
 }
+
+/**
+ * Nome do período para o título. Com o mês começando no dia 1 é só o mês
+ * ("outubro de 2026"); com outro dia, o intervalo, para não haver dúvida
+ * sobre onde termina ("5 de outubro a 4 de novembro de 2026").
+ */
+export function rotuloPeriodo(inicio: IsoDate, fim: IsoDate): string {
+  const de = partes(inicio)
+  const ate = partes(fim)
+  if (de.dia === '01' && ate.mes === de.mes) return `${MESES[de.mes - 1]} de ${de.ano}`
+  const anoDe = de.ano === ate.ano ? '' : ` de ${de.ano}`
+  return `${Number(de.dia)} de ${MESES[de.mes - 1]}${anoDe} a ${Number(ate.dia)} de ${MESES[ate.mes - 1]} de ${ate.ano}`
+}

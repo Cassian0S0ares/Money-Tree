@@ -48,3 +48,12 @@ describe('valorParaEntrada', () => {
     expect(valorParaEntrada(cents(-5))).toBe('-0,05')
   })
 })
+
+describe('rotuloPeriodo', () => {
+  it('mês cheio vira o nome do mês; outro dia de início vira o intervalo', async () => {
+    const { rotuloPeriodo } = await import('../../src/lib/format')
+    expect(rotuloPeriodo(isoDate('2026-10-01'), isoDate('2026-10-31'))).toBe('outubro de 2026')
+    expect(rotuloPeriodo(isoDate('2026-10-05'), isoDate('2026-11-04'))).toBe('5 de outubro a 4 de novembro de 2026')
+    expect(rotuloPeriodo(isoDate('2026-12-05'), isoDate('2027-01-04'))).toBe('5 de dezembro de 2026 a 4 de janeiro de 2027')
+  })
+})
