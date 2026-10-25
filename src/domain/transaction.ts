@@ -148,9 +148,12 @@ export function validarLancamento(lancamento: LancamentoValidavel): void {
  * mentindo. Ver a spec, seção 5.5.
  */
 export function estaAtrasado(
-  lancamento: { competenceDate: IsoDate; status: TransactionStatus },
+  lancamento: { competenceDate: IsoDate; dueDate?: IsoDate | null; status: TransactionStatus },
   hoje: IsoDate,
 ): boolean {
   const aguardando = lancamento.status === 'previsto' || lancamento.status === 'pendente'
-  return aguardando && comparaDatas(lancamento.competenceDate, hoje) < 0
+  // Atraso é sobre o vencimento. Lançamento avulso sem vencimento usa a
+  // competência, como na fatia 1.
+  const vencimento = lancamento.dueDate ?? lancamento.competenceDate
+  return aguardando && comparaDatas(vencimento, hoje) < 0
 }

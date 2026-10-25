@@ -30,6 +30,12 @@ export interface Lancamento {
   adjustmentReason: string | null
   source: TransactionSource
   createdAt: Date
+  /** Vencimento; nulo em lançamento avulso, que vence na competência. */
+  dueDate: IsoDate | null
+  recurrenceRuleId: string | null
+  /** Data nominal da ocorrência na regra; nula fora de recorrência. */
+  occurrenceDate: IsoDate | null
+  isException: boolean
 }
 
 export interface NovoLancamento {
@@ -60,12 +66,12 @@ export interface FiltroLancamentos {
   deslocamento?: number
 }
 
-function dataOuNulo(valor: unknown): IsoDate | null {
+export function dataOuNulo(valor: unknown): IsoDate | null {
   if (valor === null || valor === undefined) return null
   return isoDate(valor instanceof Date ? valor.toISOString().slice(0, 10) : String(valor))
 }
 
-function paraLancamento(linha: Record<string, unknown>): Lancamento {
+export function paraLancamento(linha: Record<string, unknown>): Lancamento {
   return {
     id: linha.id as string,
     accountId: linha.account_id as string,
@@ -85,6 +91,10 @@ function paraLancamento(linha: Record<string, unknown>): Lancamento {
     adjustmentReason: (linha.adjustment_reason as string | null) ?? null,
     source: linha.source as TransactionSource,
     createdAt: linha.created_at as Date,
+    dueDate: dataOuNulo(linha.due_date),
+    recurrenceRuleId: (linha.recurrence_rule_id as string | null) ?? null,
+    occurrenceDate: dataOuNulo(linha.occurrence_date),
+    isException: (linha.is_exception as boolean | undefined) ?? false,
   }
 }
 

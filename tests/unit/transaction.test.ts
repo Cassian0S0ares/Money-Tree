@@ -195,3 +195,17 @@ describe('MOVEM_SALDO', () => {
     expect(MOVEM_SALDO).toEqual(['liquidado', 'conciliado', 'estornado'])
   })
 })
+
+describe('estaAtrasado com vencimento', () => {
+  it('usa o vencimento quando existe, e a competência quando não', () => {
+    const hoje = isoDate('2026-11-03')
+    // Luz de outubro (competência) que vence em 10 de novembro: ainda não atrasou.
+    expect(
+      estaAtrasado({ competenceDate: isoDate('2026-10-01'), dueDate: isoDate('2026-11-10'), status: 'previsto' }, hoje),
+    ).toBe(false)
+    expect(
+      estaAtrasado({ competenceDate: isoDate('2026-10-01'), dueDate: isoDate('2026-11-02'), status: 'previsto' }, hoje),
+    ).toBe(true)
+    expect(estaAtrasado({ competenceDate: isoDate('2026-11-02'), status: 'previsto' }, hoje)).toBe(true)
+  })
+})

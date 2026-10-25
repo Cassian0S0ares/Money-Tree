@@ -28,6 +28,10 @@ function lancamento(descricao: string): Lancamento {
     adjustmentReason: null,
     source: 'manual',
     createdAt: new Date(),
+    dueDate: null,
+    recurrenceRuleId: null,
+    occurrenceDate: null,
+    isException: false,
   }
 }
 
