@@ -112,7 +112,7 @@ Correções herdadas primeiro (tarefas 1–2), porque a edição de ocorrências
 **Files:** `migrations/008_recorrencias.sql`; `tests/integration/008-recorrencias.test.ts`.
 
 **Schema:** como na spec, 5.1 e 5.2. Mais:
-- `UNIQUE (recurrence_rule_id, occurrence_date, direction) WHERE recurrence_rule_id IS NOT NULL`;
+- **`series_id`** em `recurrence_rules` e `recurrence_series_id` em `transactions`. Correção feita na execução (Task 4): com a chave única na regra, "desta em diante" deixaria a regra nova recriar uma data que a antiga ainda ocupa com ocorrência pulada ou editada, e a pulada ressuscitaria. Regras divididas compartilham a série, e a chave é `UNIQUE (recurrence_series_id, occurrence_date, direction) WHERE recurrence_series_id IS NOT NULL`;
 - `occurrence_date` não nulo exatamente quando há regra;
 - `create_transfer` recriada com `p_rule_id uuid default null`, `p_occurrence_date date default null` e `p_due_date date default null` (`DROP` + `CREATE`, porque o Postgres não altera a lista de parâmetros);
 - RLS e `GRANT` em `recurrence_rules` (sem `DELETE`: regra não se apaga).

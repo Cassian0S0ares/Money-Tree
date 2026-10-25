@@ -1,5 +1,5 @@
 import { diaDaSemana, diasNoMes, montarData, somarDias } from './dates'
-import type { IsoDate } from './types'
+import type { Cents, IsoDate, TransactionStatus } from './types'
 
 /**
  * Recorrências: em que datas uma regra cai, e como descrevê-la em texto.
@@ -216,4 +216,110 @@ export function descreverRegra(regra: RegraDatas): string {
   }
 
   return texto
+}
+
+export interface OcorrenciaExistente {
+  id: string
+  nominal: IsoDate
+  status: TransactionStatus
+  isException: boolean
+}
+
+/**
+ * Ocorrência que a série não pode mais mexer: já saiu de "previsto" (paga,
+ * pulada, estornada…) ou foi editada sozinha. Só a prevista intocada é
+ * substituível por edição de série, pausa ou encerramento.
+ */
+export function tocada(ocorrencia: OcorrenciaExistente): boolean {
+  return ocorrencia.status !== 'previsto' || ocorrencia.isException
+}
+
+export type PlanoEdicaoSerie =
+  | { modo: 'dividir'; fimDaAntiga: IsoDate; apagar: string[]; restantes: number | null }
+  | { modo: 'substituir'; apagar: string[]; restantes: number | null }
+
+/**
+ * "Desta em diante" (spec 6.4). A regra antiga termina na véspera e uma nova
+ * começa em `aPartirDe`; se o corte é a primeira ocorrência, não há passado
+ * a preservar e a regra é substituída no lugar. Em qualquer caso só as
+ * ocorrências futuras não tocadas são apagadas, para a regra nova gerá-las
+ * de novo. O que foi pago, pulado ou editado sozinho fica como está.
+ */
+export function planejarEdicaoSerie(entrada: {
+  regra: RegraDatas
+  aPartirDe: IsoDate
+  ocorrencias: OcorrenciaExistente[]
+}): PlanoEdicaoSerie {
+  const { regra, aPartirDe } = entrada
+
+  const apagar = entrada.ocorrencias
+    .filter((ocorrencia) => ocorrencia.nominal >= aPartirDe && !tocada(ocorrencia))
+    .map((ocorrencia) => ocorrencia.id)
+
+  if (aPartirDe <= regra.startDate) {
+    return { modo: 'substituir', apagar, restantes: regra.maxOccurrences }
+  }
+
+  const fimDaAntiga = somarDias(aPartirDe, -1)
+  // "12 vezes" continua sendo 12 no total: a nova leva o que sobrou.
+  const restantes =
+    regra.maxOccurrences === null
+      ? null
+      : Math.max(1, regra.maxOccurrences - ocorrencias(regra, regra.startDate, fimDaAntiga).length)
+
+  return { modo: 'dividir', fimDaAntiga, apagar, restantes }
+}
+
+export interface AvisoValorIncomum {
+  /** Diferença em relação à mediana, em pontos percentuais inteiros. */
+  percentual: number
+  mediana: Cents
+  sentido: 'acima' | 'abaixo'
+}
+
+const LIMITE_INCOMUM = 25
+
+/**
+ * Compara o valor pago com a mediana dos três pagamentos mais recentes da
+ * mesma regra (spec 6.6). Mediana, e não média, para um mês atípico não
+ * arrastar a referência. Sem três pagamentos, não há base e não há aviso.
+ * O aviso só informa: não bloqueia nada e não muda a regra.
+ */
+export function valorIncomum(pago: Cents, maisRecentesPrimeiro: Cents[]): AvisoValorIncomum | null {
+  if (maisRecentesPrimeiro.length < 3) return null
+
+  const mediana = [...maisRecentesPrimeiro.slice(0, 3)].sort((a, b) => a - b)[1]
+  if (mediana <= 0) return null
+
+  const diferenca = Math.abs(pago - mediana)
+  // Comparação em inteiros: "acima de 25%" sem ponto flutuante.
+  if (diferenca * 100 <= LIMITE_INCOMUM * mediana) return null
+
+  return {
+    percentual: Math.round((diferenca * 100) / mediana),
+    mediana,
+    sentido: pago > mediana ? 'acima' : 'abaixo',
+  }
+}
+
+/**
+ * Quanto separar por mês para ter `valor` no vencimento (spec 6.7). Conta
+ * uma contribuição por mês, começando hoje, enquanto a data ainda vem antes
+ * do vencimento. Arredonda para cima: a reserva precisa bastar.
+ *
+ * Só texto. Separar o dinheiro de verdade é alocação, da fatia de metas.
+ */
+export function reservaMensal(
+  valor: Cents,
+  hoje: IsoDate,
+  proximoVencimento: IsoDate,
+): { meses: number; porMes: Cents } | null {
+  if (proximoVencimento <= hoje) return null
+
+  const de = partes(hoje)
+  const ate = partes(proximoVencimento)
+  const meses = Math.max(1, (ate.ano - de.ano) * 12 + (ate.mes - de.mes) + (ate.dia > de.dia ? 1 : 0))
+
+  // Divisão inteira arredondando para cima, sem ponto flutuante.
+  return { meses, porMes: Math.floor((valor + meses - 1) / meses) as Cents }
 }
