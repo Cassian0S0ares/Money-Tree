@@ -107,9 +107,11 @@ Correções herdadas primeiro (tarefas 1–2), porque a edição de ocorrências
 
 ---
 
-### Task 5: Migração 008 — regras e colunas novas
+### Task 5: Migrações 008 e 009 — referências do mesmo usuário, regras e colunas novas
 
-**Files:** `migrations/008_recorrencias.sql`; `tests/integration/008-recorrencias.test.ts`.
+> **Correção feita na execução.** Ao preparar a T20 apareceu um furo da fatia 1: a checagem de chave estrangeira ignora a RLS, e um usuário conseguia gravar lançamento, conciliação ou subcategoria apontando para dado de outro, se soubesse o id. A migração 008 troca todas essas referências por chaves compostas `(coluna, user_id)`, com teste em `tests/integration/fk-cruzada.test.ts`. As recorrências passam para a 009, já nascendo com chaves compostas.
+
+**Files:** `migrations/009_recorrencias.sql`; `tests/integration/009-recorrencias.test.ts`.
 
 **Schema:** como na spec, 5.1 e 5.2. Mais:
 - **`series_id`** em `recurrence_rules` e `recurrence_series_id` em `transactions`. Correção feita na execução (Task 4): com a chave única na regra, "desta em diante" deixaria a regra nova recriar uma data que a antiga ainda ocupa com ocorrência pulada ou editada, e a pulada ressuscitaria. Regras divididas compartilham a série, e a chave é `UNIQUE (recurrence_series_id, occurrence_date, direction) WHERE recurrence_series_id IS NOT NULL`;
