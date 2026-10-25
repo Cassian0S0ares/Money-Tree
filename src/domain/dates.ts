@@ -101,3 +101,23 @@ export function mesFinanceiro(
 
   return { inicio: paraIso(inicio), fim: paraIso(fim) }
 }
+
+/** Soma dias a uma data civil, sem passar por fuso. */
+export function somarDias(data: IsoDate, dias: number): IsoDate {
+  return paraIso(new Date(paraUTC(data).getTime() + dias * 86_400_000))
+}
+
+/** 0 = domingo … 6 = sábado. */
+export function diaDaSemana(data: IsoDate): number {
+  return paraUTC(data).getUTCDay()
+}
+
+/** Último dia do mês de `ano`/`mes` (mês de 0 a 11). */
+export function diasNoMes(ano: number, mes: number): number {
+  return ultimoDiaDoMes(ano, mes)
+}
+
+/** Data civil a partir de ano, mês (0 a 11) e dia já válidos. */
+export function montarData(ano: number, mes: number, dia: number): IsoDate {
+  return paraIso(new Date(Date.UTC(ano, mes, dia)))
+}
