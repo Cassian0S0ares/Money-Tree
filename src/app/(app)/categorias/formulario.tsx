@@ -1,8 +1,9 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { salvarCategoria, type EstadoFormularioCategoria } from './acoes'
 import type { Categoria } from '../../../data/categories'
+import { Aviso, Cartao, Rotulo, classeEntrada, classesBotao } from '../../../components/ui'
 
 const INICIAL: EstadoFormularioCategoria = {}
 
@@ -19,56 +20,73 @@ export function FormularioCategoria({ raizes }: { raizes: Categoria[] }) {
   )
   const v = estado.valores ?? {}
 
+  // Subcategoria herda o tipo do grupo (a ação garante); o campo some para
+  // não oferecer uma escolha que seria ignorada.
+  const [grupo, setGrupo] = useState(v.parentId ?? '')
+
   return (
-    <form key={estado.chave} action={acao} className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
-      {estado.erro && (
-        <p role="alert" className="w-full rounded border border-red-200 bg-red-50 p-2 text-sm text-red-900">
-          <span aria-hidden="true">⚠ </span>
-          {estado.erro}
-        </p>
-      )}
-
-      <div className="grow">
-        <label htmlFor="name" className="block text-sm font-medium">Nome</label>
-        <input
-          id="name" name="name" required defaultValue={v.name ?? ''}
-          className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="kind" className="block text-sm font-medium">Tipo</label>
-        <select
-          id="kind" name="kind" defaultValue={v.kind ?? 'despesa'}
-          className="mt-1 rounded border border-slate-300 px-3 py-2"
-        >
-          <option value="despesa">Despesa</option>
-          <option value="receita">Receita</option>
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="parentId" className="block text-sm font-medium">
-          Dentro de <span className="text-slate-500">(opcional)</span>
-        </label>
-        <select
-          id="parentId" name="parentId" defaultValue={v.parentId ?? ''}
-          className="mt-1 rounded border border-slate-300 px-3 py-2"
-        >
-          <option value="">Nenhuma</option>
-          {raizes.map((raiz) => (
-            <option key={raiz.id} value={raiz.id}>{raiz.name}</option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs text-slate-500">Subcategoria usa o tipo do grupo.</p>
-      </div>
-
-      <button
-        type="submit" disabled={enviando}
-        className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+    <Cartao className="p-5">
+      <h2 className="mb-4 text-base font-semibold text-slate-900">Nova categoria</h2>
+      <form
+        key={estado.chave}
+        action={acao}
+        className="grid items-end gap-4 sm:grid-cols-[1fr_auto_auto_auto]"
       >
-        {enviando ? 'Salvando…' : 'Adicionar'}
-      </button>
-    </form>
+        {estado.erro && (
+          <Aviso tipo="erro" className="sm:col-span-4">{estado.erro}</Aviso>
+        )}
+        {estado.sucesso && (
+          <Aviso tipo="sucesso" className="sm:col-span-4">Categoria adicionada.</Aviso>
+        )}
+
+        <div>
+          <Rotulo htmlFor="name">Nome</Rotulo>
+          <input
+            id="name" name="name" required placeholder="Ex.: Combustível"
+            defaultValue={v.name ?? ''}
+            aria-invalid={estado.erro ? true : undefined}
+            className={classeEntrada}
+          />
+        </div>
+
+        <div>
+          <Rotulo htmlFor="parentId" opcional>Dentro de</Rotulo>
+          <select
+            id="parentId" name="parentId" value={grupo}
+            onChange={(evento) => setGrupo(evento.target.value)}
+            className={classeEntrada}
+          >
+            <option value="">Nenhum grupo</option>
+            <optgroup label="Despesas">
+              {raizes.filter((r) => r.kind === 'despesa').map((raiz) => (
+                <option key={raiz.id} value={raiz.id}>{raiz.name}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Receitas">
+              {raizes.filter((r) => r.kind === 'receita').map((raiz) => (
+                <option key={raiz.id} value={raiz.id}>{raiz.name}</option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+
+        {grupo === '' ? (
+          <div>
+            <Rotulo htmlFor="kind">Tipo</Rotulo>
+            <select id="kind" name="kind" defaultValue={v.kind ?? 'despesa'} className={classeEntrada}>
+              <option value="despesa">Despesa</option>
+              <option value="receita">Receita</option>
+            </select>
+          </div>
+        ) : (
+          // O schema exige o campo; o valor é ignorado e vem do grupo.
+          <input type="hidden" name="kind" value="despesa" />
+        )}
+
+        <button type="submit" disabled={enviando} className={classesBotao('primario')}>
+          {enviando ? 'Salvando…' : 'Adicionar'}
+        </button>
+      </form>
+    </Cartao>
   )
 }

@@ -1,33 +1,42 @@
 import { exigirUsuario } from '../../../lib/session'
-import { sair } from '../../entrar/acoes'
+import { FormularioConfirmado } from '../../../components/formulario-confirmado'
+import { CabecalhoPagina, Cartao, classesBotao } from '../../../components/ui'
 import { encerrarOutrasSessoes } from './acoes'
 import { FormularioPreferencias } from './formulario'
+
+export const metadata = { title: 'Configurações' }
 
 export default async function PaginaConfiguracoes() {
   const usuario = await exigirUsuario()
 
   return (
-    <section className="max-w-lg space-y-8">
-      <h1 className="text-xl font-semibold">Configurações</h1>
+    <section className="max-w-2xl space-y-8">
+      <CabecalhoPagina titulo="Configurações" descricao={`Conectado como ${usuario.email}.`} />
 
-      <FormularioPreferencias usuario={usuario} />
+      <Cartao as="section" className="p-6">
+        <h2 className="mb-4 text-base font-semibold text-slate-900">Preferências</h2>
+        <FormularioPreferencias usuario={usuario} />
+      </Cartao>
 
-      <div className="space-y-3 border-t border-slate-200 pt-6">
-        <h2 className="text-sm font-medium">Sessões</h2>
-        <form action={sair}>
-          <button type="submit" className="rounded border border-slate-300 px-4 py-2 text-sm">
-            Sair deste dispositivo
-          </button>
-        </form>
-        <form action={encerrarOutrasSessoes}>
-          <button type="submit" className="rounded border border-red-300 px-4 py-2 text-sm text-red-800">
+      <Cartao as="section" className="p-6">
+        <h2 className="text-base font-semibold text-slate-900">Sessões</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Perdeu um aparelho ou entrou num computador que não é seu? Encerre todas as sessões. Você
+          precisará entrar de novo aqui também.
+        </p>
+        <FormularioConfirmado
+          action={encerrarOutrasSessoes}
+          titulo="Encerrar todas as sessões?"
+          descricao="Todos os dispositivos conectados, inclusive este, serão desconectados."
+          rotuloConfirmar="Encerrar todas"
+          perigoso
+          className="mt-4"
+        >
+          <button type="submit" className={classesBotao('secundario', 'border-red-300 text-red-800!')}>
             Encerrar todas as sessões
           </button>
-          <p className="mt-1 text-xs text-slate-500">
-            Desconecta todos os dispositivos, inclusive este.
-          </p>
-        </form>
-      </div>
+        </FormularioConfirmado>
+      </Cartao>
     </section>
   )
 }

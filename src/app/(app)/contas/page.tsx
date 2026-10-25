@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import { listarContasComSaldo } from '../../../data/accounts'
 import { exigirUsuario } from '../../../lib/session'
-import { dinheiro } from '../../../lib/format'
+import { rotuloTipoConta } from '../../../lib/format'
 import { SemDados } from '../../../components/states'
+import { FormularioConfirmado } from '../../../components/formulario-confirmado'
+import { CabecalhoPagina, Cartao, LinkBotao, SeloEstimado, Valor } from '../../../components/ui'
 import { arquivar } from './acoes'
+
+export const metadata = { title: 'Contas' }
 
 export default async function PaginaContas() {
   const usuario = await exigirUsuario()
@@ -11,58 +15,74 @@ export default async function PaginaContas() {
 
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Contas</h1>
-        <Link href="/contas/nova" className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">
-          Nova conta
-        </Link>
-      </div>
+      <CabecalhoPagina
+        titulo="Contas"
+        descricao="Onde seu dinheiro está. Concilie com o extrato para o saldo deixar de ser estimado."
+        acao={<LinkBotao href="/contas/nova">Nova conta</LinkBotao>}
+      />
 
       {contas.length === 0 ? (
         <SemDados
           titulo="Nenhuma conta cadastrada"
           descricao="Comece pela conta onde seu salário cai. O saldo inicial é quanto há nela hoje."
-          acao={
-            <Link href="/contas/nova" className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">
-              Cadastrar primeira conta
-            </Link>
-          }
+          acao={<LinkBotao href="/contas/nova">Cadastrar primeira conta</LinkBotao>}
         />
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {contas.map((conta) => (
-            <li key={conta.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div>
-                <Link href={`/contas/${conta.id}`} className="font-medium hover:underline">
-                  {conta.name}
-                </Link>
-                <p className="text-sm text-slate-600">
-                  {conta.institution ?? 'Sem instituição'}
-                  {!conta.includeInAvailable && ' · fora do disponível'}
-                </p>
-              </div>
-
-              <div className="text-right">
-                <p className="font-medium tabular-nums">{dinheiro(conta.balanceCents)}</p>
-                {conta.isEstimated && (
-                  <p className="text-xs text-slate-500">
-                    <span aria-hidden="true">≈ </span>Estimado, ainda não conciliado
+        <Cartao>
+          <ul className="divide-y divide-slate-100">
+            {contas.map((conta) => (
+              <li
+                key={conta.id}
+                className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-6"
+              >
+                <div className="min-w-0">
+                  <Link
+                    href={`/contas/${conta.id}`}
+                    className="font-medium text-slate-900 hover:text-marca-700 hover:underline"
+                  >
+                    {conta.name}
+                  </Link>
+                  <p className="text-sm text-slate-600">
+                    {rotuloTipoConta(conta.type)}
+                    {conta.institution && ` · ${conta.institution}`}
+                    {!conta.includeInAvailable && ' · fora do disponível'}
                   </p>
-                )}
-              </div>
+                </div>
 
-              <div className="flex gap-3 text-sm">
-                <Link href={`/contas/${conta.id}/conciliar`} className="underline">
-                  Conciliar
-                </Link>
-                <form action={arquivar}>
-                  <input type="hidden" name="id" value={conta.id} />
-                  <button type="submit" className="underline">Arquivar</button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
+                <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                  <p className="text-lg font-semibold">
+                    <Valor centavos={conta.balanceCents} />
+                  </p>
+                  {conta.isEstimated ? (
+                    <SeloEstimado curto />
+                  ) : (
+                    <p className="text-xs text-marca-700">✓ Conciliada</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <LinkBotao href={`/contas/${conta.id}/conciliar`} variante="secundario">
+                    Conciliar<span className="sr-only"> {conta.name}</span>
+                  </LinkBotao>
+                  <FormularioConfirmado
+                    action={arquivar}
+                    titulo={`Arquivar ${conta.name}?`}
+                    descricao="A conta sai das listas e do saldo, mas o histórico de lançamentos é preservado."
+                    rotuloConfirmar="Arquivar conta"
+                  >
+                    <input type="hidden" name="id" value={conta.id} />
+                    <button
+                      type="submit"
+                      className="min-h-10 rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      Arquivar<span className="sr-only"> {conta.name}</span>
+                    </button>
+                  </FormularioConfirmado>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Cartao>
       )}
     </section>
   )

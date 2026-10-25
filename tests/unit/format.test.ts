@@ -36,3 +36,15 @@ describe('rotuloStatus', () => {
     }
   })
 })
+
+describe('valorParaEntrada', () => {
+  it('devolve o formato que parseBRL aceita, ida e volta exata', async () => {
+    const { parseBRL } = await import('../../src/domain/money')
+    const { valorParaEntrada } = await import('../../src/lib/format')
+    for (const valor of [0, 5, 99, 100, 123_456, -35_000, 100_000_007]) {
+      expect(parseBRL(valorParaEntrada(cents(valor)))).toBe(valor)
+    }
+    expect(valorParaEntrada(cents(123_456))).toBe('1.234,56')
+    expect(valorParaEntrada(cents(-5))).toBe('-0,05')
+  })
+})

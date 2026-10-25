@@ -5,11 +5,14 @@ import { listarLancamentos } from '../../../data/transactions'
 import { hojeEm, isoDate } from '../../../domain/dates'
 import { estaAtrasado } from '../../../domain/transaction'
 import { exigirUsuario } from '../../../lib/session'
-import { dataCurta, dinheiro } from '../../../lib/format'
+import { dataLonga } from '../../../lib/format'
 import { StatusBadge } from '../../../components/status-badge'
 import { SemDados, SemResultados } from '../../../components/states'
+import { CabecalhoPagina, Cartao, LinkBotao, Valor } from '../../../components/ui'
 import type { IsoDate, TransactionStatus } from '../../../domain/types'
 import { Filtros } from './filtros'
+
+export const metadata = { title: 'Lançamentos' }
 
 const POR_PAGINA = 50
 
@@ -71,18 +74,36 @@ export default async function PaginaLancamentos({
   const temFiltro = ['conta', 'categoria', 'estado', 'de', 'ate'].some((chave) => texto(chave))
   const totalPaginas = Math.max(1, Math.ceil(resultado.total / POR_PAGINA))
 
+  // Agrupado por data de competência, como num extrato. A lista já vem
+  // ordenada por data decrescente, então basta cortar onde a data muda.
+  const grupos: { data: IsoDate; itens: typeof resultado.itens }[] = []
+  for (const item of resultado.itens) {
+    const ultimo = grupos.at(-1)
+    if (ultimo?.data === item.competenceDate) ultimo.itens.push(item)
+    else grupos.push({ data: item.competenceDate, itens: [item] })
+  }
+
+  const linkPagina = (numero: number) => ({
+    pathname: '/lancamentos',
+    query: { ...params, pagina: numero },
+  })
+
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Lançamentos</h1>
-        <Link href="/lancamentos/novo" className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">
-          Novo lançamento
-        </Link>
-      </div>
+      <CabecalhoPagina
+        titulo="Lançamentos"
+        descricao={
+          resultado.total > 0
+            ? `${resultado.total} ${resultado.total === 1 ? 'lançamento' : 'lançamentos'}${temFiltro ? ' com os filtros aplicados' : ''}.`
+            : undefined
+        }
+        acao={<LinkBotao href="/lancamentos/novo">Novo lançamento</LinkBotao>}
+      />
 
       <Filtros
         contas={contas}
         categorias={categorias}
+        temFiltro={temFiltro}
         atual={Object.fromEntries(
           Object.entries(params).filter(([, v]) => typeof v === 'string'),
         ) as Record<string, string>}
@@ -92,76 +113,72 @@ export default async function PaginaLancamentos({
         <SemDados
           titulo="Nenhum lançamento ainda"
           descricao="Registre a primeira despesa ou receita. O saldo das contas passa a refletir isso na hora."
-          acao={
-            <Link href="/lancamentos/novo" className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">
-              Registrar lançamento
-            </Link>
-          }
+          acao={<LinkBotao href="/lancamentos/novo">Registrar lançamento</LinkBotao>}
         />
       )}
 
-      {resultado.total === 0 && temFiltro && <SemResultados />}
+      {resultado.total === 0 && temFiltro && (
+        <SemResultados acao={<LinkBotao href="/lancamentos" variante="secundario">Limpar filtros</LinkBotao>} />
+      )}
 
-      {resultado.total > 0 && (
-        <>
-          <p className="text-sm text-slate-600">
-            {resultado.total} {resultado.total === 1 ? 'lançamento' : 'lançamentos'}
-          </p>
-
-          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-            {resultado.itens.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <Link href={`/lancamentos/${item.id}`} className="font-medium hover:underline">
-                    {/* React escapa por padrão; o texto vem do usuário e é
-                        tratado como não confiável (§5.3). */}
-                    {item.description}
-                  </Link>
-                  <p className="text-sm text-slate-600">
-                    {dataCurta(item.competenceDate)} · {nomeConta.get(item.accountId) ?? 'Conta'}
-                    {item.categoryId && ` · ${nomeCategoria.get(item.categoryId) ?? 'Categoria'}`}
-                    {item.kind === 'transferencia' && ' · Transferência'}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={item.status} atrasado={estaAtrasado(item, hoje)} />
-                  <span
-                    className={`tabular-nums ${item.direction === 1 ? 'text-emerald-800' : 'text-slate-900'}`}
+      {grupos.map((grupo) => (
+        <section key={grupo.data} aria-labelledby={`dia-${grupo.data}`}>
+          <h2 id={`dia-${grupo.data}`} className="mb-2 text-sm font-semibold text-slate-600">
+            <time dateTime={grupo.data}>{dataLonga(grupo.data)}</time>
+          </h2>
+          <Cartao>
+            <ul className="divide-y divide-slate-100">
+              {grupo.itens.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/lancamentos/${item.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
                   >
-                    {item.direction === 1 ? '+' : '−'} {dinheiro(item.amountCents)}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
+                    <span className="min-w-0">
+                      {/* React escapa por padrão; o texto vem do usuário e é
+                          tratado como não confiável (§5.3). */}
+                      <span className="block truncate font-medium text-slate-900">
+                        {item.description}
+                      </span>
+                      <span className="block truncate text-xs text-slate-600">
+                        {nomeConta.get(item.accountId) ?? 'Conta'}
+                        {item.categoryId && ` · ${nomeCategoria.get(item.categoryId) ?? 'Categoria'}`}
+                        {item.kind === 'transferencia' && ' · Transferência'}
+                        {item.kind === 'ajuste' && ' · Ajuste'}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row-reverse sm:items-center sm:gap-3">
+                      <Valor centavos={item.amountCents} direcao={item.direction} className="font-medium" />
+                      <StatusBadge status={item.status} atrasado={estaAtrasado(item, hoje)} />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Cartao>
+        </section>
+      ))}
 
-          {totalPaginas > 1 && (
-            <nav aria-label="Paginação" className="flex items-center justify-between text-sm">
-              {pagina > 1 ? (
-                <Link
-                  href={{ pathname: '/lancamentos', query: { ...params, pagina: pagina - 1 } }}
-                  className="underline"
-                >
-                  Anterior
-                </Link>
-              ) : (
-                <span />
-              )}
-              <span>Página {pagina} de {totalPaginas}</span>
-              {pagina < totalPaginas ? (
-                <Link
-                  href={{ pathname: '/lancamentos', query: { ...params, pagina: pagina + 1 } }}
-                  className="underline"
-                >
-                  Próxima
-                </Link>
-              ) : (
-                <span />
-              )}
-            </nav>
+      {totalPaginas > 1 && (
+        <nav aria-label="Paginação" className="flex items-center justify-between gap-3 text-sm">
+          {pagina > 1 ? (
+            <LinkBotao href={linkPagina(pagina - 1)} variante="secundario">
+              <span aria-hidden="true">←</span> Anterior
+            </LinkBotao>
+          ) : (
+            <span />
           )}
-        </>
+          <span className="text-slate-600">
+            Página {pagina} de {totalPaginas}
+          </span>
+          {pagina < totalPaginas ? (
+            <LinkBotao href={linkPagina(pagina + 1)} variante="secundario">
+              Próxima <span aria-hidden="true">→</span>
+            </LinkBotao>
+          ) : (
+            <span />
+          )}
+        </nav>
       )}
     </section>
   )

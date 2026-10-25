@@ -1,9 +1,12 @@
-import Link from 'next/link'
 import { listarContas } from '../../../../data/accounts'
 import { listarCategorias } from '../../../../data/categories'
+import { hojeEm } from '../../../../domain/dates'
 import { exigirUsuario } from '../../../../lib/session'
 import { SemDados } from '../../../../components/states'
+import { CabecalhoPagina, LinkBotao } from '../../../../components/ui'
 import { FormularioLancamento } from '../formulario'
+
+export const metadata = { title: 'Novo lançamento' }
 
 export default async function PaginaNovoLancamento() {
   const usuario = await exigirUsuario()
@@ -17,19 +20,15 @@ export default async function PaginaNovoLancamento() {
       <SemDados
         titulo="Cadastre uma conta primeiro"
         descricao="Todo lançamento pertence a uma conta. Crie a sua para começar a registrar."
-        acao={
-          <Link href="/contas/nova" className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white">
-            Cadastrar conta
-          </Link>
-        }
+        acao={<LinkBotao href="/contas/nova">Cadastrar conta</LinkBotao>}
       />
     )
   }
 
   return (
     <section>
-      <h1 className="mb-6 text-xl font-semibold">Novo lançamento</h1>
-      <FormularioLancamento contas={contas} categorias={categorias} />
+      <CabecalhoPagina titulo="Novo lançamento" />
+      <FormularioLancamento contas={contas} categorias={categorias} hoje={hojeEm(usuario.timezone)} />
     </section>
   )
 }

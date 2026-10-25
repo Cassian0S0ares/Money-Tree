@@ -77,9 +77,14 @@ export async function atualizarCategoria(
   })
 }
 
+/**
+ * Arquiva a categoria e, se for grupo, as subcategorias: filha ativa de pai
+ * arquivado sumiria da árvore e continuaria nos formulários.
+ */
 export async function arquivarCategoria(userId: string, id: string): Promise<void> {
   await comoUsuario(userId, (sql) => sql`
-    update categories set is_archived = true, updated_at = now() where id = ${id}
+    update categories set is_archived = true, updated_at = now()
+    where id = ${id} or parent_id = ${id}
   `)
 }
 

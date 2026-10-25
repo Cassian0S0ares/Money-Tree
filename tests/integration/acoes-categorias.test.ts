@@ -70,3 +70,17 @@ describe('categorias', () => {
     expect(renomeada.name).toBe('Casa e aluguel')
   })
 })
+
+describe('arquivar grupo', () => {
+  it('arquivar a categoria-pai arquiva as subcategorias junto', async () => {
+    const usuario = await criarUsuario()
+    const pai = await criarCategoria(usuario, { name: 'Transporte', kind: 'despesa' })
+    await criarCategoria(usuario, { name: 'Combustível', kind: 'despesa', parentId: pai.id })
+
+    await arquivarCategoria(usuario, pai.id)
+
+    // Filha ativa de pai arquivado ficaria fora da árvore e dentro dos
+    // formulários, sem lugar onde ser vista ou arquivada.
+    expect(await listarCategorias(usuario)).toHaveLength(0)
+  })
+})

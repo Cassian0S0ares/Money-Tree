@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation'
 import { buscarConta } from '../../../../data/accounts'
+import { hojeEm } from '../../../../domain/dates'
 import { exigirUsuario } from '../../../../lib/session'
+import { CabecalhoPagina, LinkBotao } from '../../../../components/ui'
 import { FormularioConta } from '../formulario'
+
+export const metadata = { title: 'Editar conta' }
 
 export default async function PaginaEditarConta({
   params,
@@ -16,8 +20,16 @@ export default async function PaginaEditarConta({
 
   return (
     <section>
-      <h1 className="mb-6 text-xl font-semibold">{conta.name}</h1>
-      <FormularioConta conta={conta} />
+      <CabecalhoPagina
+        titulo={conta.name}
+        descricao="Os lançamentos ficam como estão. Mudar o saldo inicial muda o saldo calculado."
+        acao={
+          <LinkBotao href={`/contas/${conta.id}/conciliar`} variante="secundario">
+            Conciliar com o extrato
+          </LinkBotao>
+        }
+      />
+      <FormularioConta conta={conta} hoje={hojeEm(usuario.timezone)} />
     </section>
   )
 }

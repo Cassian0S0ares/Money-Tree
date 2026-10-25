@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import type { Conta } from '../../../data/accounts'
 import type { Categoria } from '../../../data/categories'
+import { Rotulo, classeEntrada, classesBotao } from '../../../components/ui'
 
 const ESTADOS = [
-  { valor: '', rotulo: 'Todos os estados' },
+  { valor: '', rotulo: 'Todos' },
   { valor: 'previsto', rotulo: 'Previsto' },
   { valor: 'pendente', rotulo: 'Pendente' },
   { valor: 'liquidado', rotulo: 'Liquidado' },
@@ -15,66 +16,83 @@ const ESTADOS = [
 /**
  * Formulário GET: o filtro vira parâmetro na URL. Recarregar não perde o
  * filtro, o link pode ser guardado e o botão Voltar funciona.
+ *
+ * Fica num <details>: no celular os filtros não empurram a lista para fora
+ * da tela, e vêm abertos quando há filtro ativo, para ninguém esquecer que
+ * está vendo uma parte só.
  */
 export function Filtros({
   contas,
   categorias,
   atual,
+  temFiltro,
 }: {
   contas: Conta[]
   categorias: Categoria[]
   atual: Record<string, string>
+  temFiltro: boolean
 }) {
   return (
-    <form
-      method="get"
-      className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4"
-    >
-      <div>
-        <label htmlFor="conta" className="block text-sm font-medium">Conta</label>
-        <select id="conta" name="conta" defaultValue={atual.conta ?? ''} className="mt-1 rounded border border-slate-300 px-3 py-2">
-          <option value="">Todas</option>
-          {contas.map((conta) => (
-            <option key={conta.id} value={conta.id}>{conta.name}</option>
-          ))}
-        </select>
-      </div>
+    <details open={temFiltro} className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
+        <span>
+          Filtros
+          {temFiltro && (
+            <span className="ml-2 rounded-full bg-marca-50 px-2 py-0.5 text-xs text-marca-800">ativos</span>
+          )}
+        </span>
+        <span aria-hidden="true" className="text-slate-500 transition-transform group-open:rotate-180">
+          ▾
+        </span>
+      </summary>
 
-      <div>
-        <label htmlFor="categoria" className="block text-sm font-medium">Categoria</label>
-        <select id="categoria" name="categoria" defaultValue={atual.categoria ?? ''} className="mt-1 rounded border border-slate-300 px-3 py-2">
-          <option value="">Todas</option>
-          {categorias.map((categoria) => (
-            <option key={categoria.id} value={categoria.id}>{categoria.name}</option>
-          ))}
-        </select>
-      </div>
+      <form method="get" className="grid gap-4 border-t border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div>
+          <Rotulo htmlFor="conta">Conta</Rotulo>
+          <select id="conta" name="conta" defaultValue={atual.conta ?? ''} className={classeEntrada}>
+            <option value="">Todas</option>
+            {contas.map((conta) => (
+              <option key={conta.id} value={conta.id}>{conta.name}</option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label htmlFor="estado" className="block text-sm font-medium">Estado</label>
-        <select id="estado" name="estado" defaultValue={atual.estado ?? ''} className="mt-1 rounded border border-slate-300 px-3 py-2">
-          {ESTADOS.map((estado) => (
-            <option key={estado.valor} value={estado.valor}>{estado.rotulo}</option>
-          ))}
-        </select>
-      </div>
+        <div>
+          <Rotulo htmlFor="categoria">Categoria</Rotulo>
+          <select id="categoria" name="categoria" defaultValue={atual.categoria ?? ''} className={classeEntrada}>
+            <option value="">Todas</option>
+            {categorias.map((categoria) => (
+              <option key={categoria.id} value={categoria.id}>{categoria.name}</option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label htmlFor="de" className="block text-sm font-medium">De</label>
-        <input id="de" name="de" type="date" defaultValue={atual.de ?? ''} className="mt-1 rounded border border-slate-300 px-3 py-2" />
-      </div>
+        <div>
+          <Rotulo htmlFor="estado">Estado</Rotulo>
+          <select id="estado" name="estado" defaultValue={atual.estado ?? ''} className={classeEntrada}>
+            {ESTADOS.map((estado) => (
+              <option key={estado.valor} value={estado.valor}>{estado.rotulo}</option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <label htmlFor="ate" className="block text-sm font-medium">Até</label>
-        <input id="ate" name="ate" type="date" defaultValue={atual.ate ?? ''} className="mt-1 rounded border border-slate-300 px-3 py-2" />
-      </div>
+        <div>
+          <Rotulo htmlFor="de">De</Rotulo>
+          <input id="de" name="de" type="date" defaultValue={atual.de ?? ''} className={classeEntrada} />
+        </div>
 
-      <button type="submit" className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-        Filtrar
-      </button>
-      <Link href="/lancamentos" className="px-2 py-2 text-sm underline">
-        Limpar
-      </Link>
-    </form>
+        <div>
+          <Rotulo htmlFor="ate">Até</Rotulo>
+          <input id="ate" name="ate" type="date" defaultValue={atual.ate ?? ''} className={classeEntrada} />
+        </div>
+
+        <div className="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-5">
+          <button type="submit" className={classesBotao('primario')}>Aplicar filtros</button>
+          {temFiltro && (
+            <Link href="/lancamentos" className={classesBotao('fantasma')}>Limpar</Link>
+          )}
+        </div>
+      </form>
+    </details>
   )
 }
