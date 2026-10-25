@@ -3,6 +3,9 @@ import { listarContasComSaldo } from '../../data/accounts'
 import { listarLancamentos } from '../../data/transactions'
 import { proximasContas } from '../../data/recurrences'
 import { ProximasContas } from '../../components/proximas-contas'
+import { OrcamentoResumo } from '../../components/orcamento-resumo'
+import { resumoOrcamento } from '../../data/budgets'
+import { mesFinanceiro } from '../../domain/dates'
 import { somarSaldos } from '../../domain/balance'
 import { hojeEm } from '../../domain/dates'
 import { estaAtrasado } from '../../domain/transaction'
@@ -26,6 +29,7 @@ export default async function PaginaSaldos() {
     listarLancamentos(usuario.id, { limite: 5, ate: hoje }),
     proximasContas(usuario.id, hoje, DIAS_PROXIMAS),
   ])
+  const orcamento = await resumoOrcamento(usuario.id, mesFinanceiro(hoje, usuario.monthStartDay), hoje, usuario.monthStartDay)
 
   if (contas.length === 0) {
     return (
@@ -85,6 +89,8 @@ export default async function PaginaSaldos() {
         dias={DIAS_PROXIMAS}
         nomeConta={nomeConta}
       />
+
+      <OrcamentoResumo itens={orcamento.itens} />
 
       <section aria-labelledby="titulo-contas">
         <div className="mb-3 flex items-center justify-between">
