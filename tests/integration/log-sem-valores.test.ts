@@ -6,6 +6,14 @@ import { criarCategoria } from '../../src/data/categories'
 import { criarLancamento, estornarLancamento } from '../../src/data/transactions'
 import { registrarConciliacao } from '../../src/data/reconciliations'
 import { comoUsuario } from '../../src/data/with-user'
+import {
+  criarRegra,
+  editarDestaEmDiante,
+  garantirOcorrencias,
+  ocorrenciasDaRegra,
+  pagarOcorrencia,
+  pularOcorrencia,
+} from '../../src/data/recurrences'
 import { log } from '../../src/lib/logger'
 import { isoDate } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
@@ -83,5 +91,34 @@ describe('AMEAÇA T7: valor financeiro não vaza em log', () => {
     semDadoFinanceiro()
     // O que serve para diagnosticar continua lá.
     expect(saida.join('\n')).toContain('tx_despesa_sai')
+  })
+
+  it('o fluxo de recorrência também não escreve valor nem descrição', async () => {
+    const usuario = await criarUsuario()
+    const conta = await criarConta(usuario, {
+      name: 'Corrente', type: 'corrente',
+      initialBalanceCents: cents(0), initialBalanceDate: isoDate('2026-09-01'),
+    })
+    const hoje = isoDate('2026-10-25')
+    const regra = await criarRegra(
+      usuario,
+      {
+        kind: 'despesa', description: DESCRICAO, accountId: conta.id, nature: 'variavel',
+        amountCents: cents(VALOR), amountIsEstimate: true, unit: 'semana', interval: 1,
+        startDate: isoDate('2026-10-26'),
+      },
+      { hoje },
+    )
+    await garantirOcorrencias(usuario, hoje)
+    const lista = await ocorrenciasDaRegra(usuario, regra.id)
+
+    for (const ocorrencia of lista.slice(0, 4)) {
+      await pagarOcorrencia(usuario, ocorrencia.id, { valor: cents(VALOR), quando: hoje })
+    }
+    await pularOcorrencia(usuario, lista[4].id)
+    await editarDestaEmDiante(usuario, lista[5].id, { amountCents: cents(VALOR + 1) }, hoje)
+    await garantirOcorrencias(usuario, hoje)
+
+    semDadoFinanceiro()
   })
 })
