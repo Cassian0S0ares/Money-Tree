@@ -237,35 +237,51 @@ export async function estornarLancamento(
     throw new Error('Estorno exige motivo')
   }
 
-  const original = await buscarLancamento(userId, id)
-  if (!original) throw new Error('Lançamento não encontrado')
-
-  assertTransicao(original.status, 'estornado')
-
   return comoUsuario(userId, async (sql) => {
-    const [estorno] = await sql`
-      insert into transactions (
-        user_id, account_id, kind, description, amount_cents, direction,
-        status, competence_date, settled_date, adjustment_reason, source
-      ) values (
-        ${userId}, ${original.accountId}, 'ajuste',
-        ${`Estorno: ${original.description}`}, ${original.amountCents},
-        ${original.direction * -1}, 'liquidado',
-        ${original.competenceDate}, ${original.settledDate ?? original.competenceDate},
-        ${motivo}, 'manual'
-      )
-      returning *
+    // Transferência é estornada inteira (§5.3): estornar só um lado faria
+    // o dinheiro sumir de uma conta sem voltar à outra. As linhas ficam
+    // travadas até o fim, para dois estornos simultâneos não se cruzarem.
+    const linhas = await sql`
+      select * from transactions
+      where id = ${id}
+         or transfer_group_id = (select transfer_group_id from transactions where id = ${id})
+      for update
     `
+    const lados = linhas.map(paraLancamento)
+    if (!lados.some((lado) => lado.id === id)) throw new Error('Lançamento não encontrado')
 
-    await sql`
-      update transactions set status = 'estornado', updated_at = now() where id = ${id}
-    `
+    for (const lado of lados) assertTransicao(lado.status, 'estornado')
 
-    await sql`
-      insert into ledger_reversals (user_id, original_transaction_id, reversal_transaction_id, reason)
-      values (${userId}, ${id}, ${estorno.id}, ${motivo})
-    `
+    let estornoPedido: Lancamento | undefined
 
-    return paraLancamento(estorno)
+    for (const original of lados) {
+      const [estorno] = await sql`
+        insert into transactions (
+          user_id, account_id, kind, description, amount_cents, direction,
+          status, competence_date, settled_date, adjustment_reason, source
+        ) values (
+          ${userId}, ${original.accountId}, 'ajuste',
+          ${`Estorno: ${original.description}`}, ${original.amountCents},
+          ${original.direction * -1}, 'liquidado',
+          ${original.competenceDate}, ${original.settledDate ?? original.competenceDate},
+          ${motivo}, 'manual'
+        )
+        returning *
+      `
+
+      await sql`
+        update transactions set status = 'estornado', updated_at = now()
+        where id = ${original.id}
+      `
+
+      await sql`
+        insert into ledger_reversals (user_id, original_transaction_id, reversal_transaction_id, reason)
+        values (${userId}, ${original.id}, ${estorno.id}, ${motivo})
+      `
+
+      if (original.id === id) estornoPedido = paraLancamento(estorno)
+    }
+
+    return estornoPedido!
   })
 }
