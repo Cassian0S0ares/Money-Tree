@@ -5510,6 +5510,8 @@ export function ErroRecuperavel({
 
 - [ ] **Step 8: Configurar os cabeçalhos de segurança**
 
+> **Correção feita na execução.** `script-src 'self'` sem nonce quebra o App Router, que injeta scripts inline para hidratar. A CSP foi para `src/middleware.ts`, com nonce por requisição e `'strict-dynamic'` (mais `'unsafe-eval'` só em dev); o `next.config.ts` ficou com os cabeçalhos estáticos. O `src/app/page.tsx` do template foi removido, porque `/` passa a ser `src/app/(app)/page.tsx` na Task 19.
+
 `next.config.ts`:
 
 ```ts
