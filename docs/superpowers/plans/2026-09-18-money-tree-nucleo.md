@@ -2905,8 +2905,12 @@ create index audit_events_usuario_tempo on audit_events (user_id, occurred_at de
  *
  * `is_estimated` cumpre a exigência do §6.1: saldo ainda não conferido com
  * fonte externa precisa se anunciar como estimativa.
+ *
+ * `security_invoker` é obrigatório: view comum roda com os privilégios do
+ * dono, e o dono da migração ignora RLS. Sem isso, qualquer usuário veria o
+ * saldo de todos (ameaça T3).
  */
-create view account_balances as
+create view account_balances with (security_invoker = true) as
 select
   a.id   as account_id,
   a.user_id,
