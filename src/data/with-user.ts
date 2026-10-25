@@ -14,7 +14,7 @@ export async function comoUsuario<T>(
   userId: string,
   fn: (tx: postgres.TransactionSql) => Promise<T>,
 ): Promise<T> {
-  return sql.begin(async (tx) => {
+  return sql().begin(async (tx) => {
     await tx`select set_config('app.user_id', ${userId}, true)`
     return fn(tx)
   }) as Promise<T>
@@ -29,5 +29,5 @@ export async function comoUsuario<T>(
 export async function semUsuario<T>(
   fn: (tx: postgres.TransactionSql) => Promise<T>,
 ): Promise<T> {
-  return sql.begin((tx) => fn(tx)) as Promise<T>
+  return sql().begin((tx) => fn(tx)) as Promise<T>
 }

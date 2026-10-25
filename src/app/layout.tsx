@@ -1,6 +1,13 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
+/**
+ * A CSP leva um nonce novo a cada requisição (`src/middleware.ts`), e só HTML
+ * gerado na requisição pode carregá-lo. Página pré-renderizada no build teria
+ * scripts sem nonce, bloqueados pela própria CSP em produção.
+ */
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Money Tree',
   description: 'Gestão financeira pessoal',

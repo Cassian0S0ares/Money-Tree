@@ -8319,6 +8319,8 @@ exige motivo — §5.3.1 proíbe reescrever histórico em silêncio."
 
 ### Task 24: Configurações, backup e verificação final
 
+> **Correção feita na execução.** Sem Docker, `pg_dump`, `psql` nem `age` na máquina. O backup cifra com `gpg --symmetric` (AES-256 com integridade; `openssl enc` não aceita modo autenticado) e o teste de restauração usa um Postgres embutido (`scripts/postgres-descartavel.ts`). Só a cifragem foi exercitada; o ciclo completo depende de instalar `postgresql-client-17`. Além disso: configurações com formulário cliente (o plano descartava o erro de `salvarPreferencias`) e fuso validado com `Intl`; cliente do banco criado na primeira consulta, para o build não exigir `DATABASE_URL`; renderização dinâmica no layout raiz, porque página estática não recebe o nonce da CSP; foco visível global.
+
 **Files:**
 - Create: `src/app/(app)/configuracoes/page.tsx`, `src/app/(app)/configuracoes/acoes.ts`, `scripts/backup.sh`, `scripts/restore-test.sh`, `docs/seguranca/backup-e-restauracao.md`
 - Modify: `docs/seguranca/modelo-de-ameacas.md` (marcar o que virou teste)

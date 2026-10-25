@@ -52,22 +52,22 @@ Quarta fronteira, implícita: **Git**. Somente código e documentação atravess
 
 | # | Ameaça | Categoria | Mitigação | Verificação |
 |---|---|---|---|---|
-| T1 | Sequestro de sessão por roubo de token | Falsificação | Cookie `HttpOnly`/`Secure`/`SameSite=Lax`; nada em `localStorage`; rotação do ID ao autenticar | Teste que assere os atributos do cookie e a rotação |
-| T2 | Força bruta na senha | Falsificação | argon2id com parâmetros versionados; limitação de tentativas por conta e por origem | Teste de bloqueio após N tentativas |
-| T3 | Um usuário lê dado de outro | Elevação de privilégio | `FORCE ROW LEVEL SECURITY`; role `money_tree_app` sem bypass; `SET LOCAL app.user_id` por transação | Teste de integração: usuário A consulta e não enxerga linha de B |
-| T4 | Bug na aplicação esquece o filtro por usuário | Exposição | Mesma RLS de T3 — a defesa não depende do código da aplicação | Teste que roda consulta sem filtro e ainda assim não vaza |
-| T5 | XSS via descrição ou estabelecimento | Adulteração | Escape em toda renderização; texto do banco tratado como não confiável ao ser lido; CSP restritiva sem script remoto | Teste com carga maliciosa gravada e depois renderizada |
-| T6 | Apagar lançamento liquidado para esconder histórico | Repúdio | Gatilho de banco bloqueia `DELETE` em `liquidado`/`conciliado`/`estornado`; correção só via estorno vinculado | Teste de constraint que espera falha no `DELETE` |
-| T7 | Valor financeiro vaza em log | Exposição | Logger com redação; `audit_events` sem valores nem descrições | Teste que grava lançamento e varre a saída de log em busca do valor |
-| T8 | Credencial do banco commitada | Exposição | `.gitignore` antes do primeiro commit; `.env.example` só com placeholders; spec sem credencial nem ref do projeto | Verificação de segredos no pre-commit e no CI |
-| T9 | Saldo errado por ponto flutuante | Adulteração | `bigint` de centavos no banco; tipo marcado `Cents` no domínio; float proibido no módulo de dinheiro | Teste de propriedade sobre rateio e soma |
-| T10 | Transferência grava um lado só | Adulteração | Função SQL cria os dois lados em uma transação | Teste que força falha no segundo lado e assere que nenhum foi gravado |
-| T11 | Reimportação duplica lançamentos | Adulteração | UNIQUE `(user_id, source, external_id)` | Teste de constraint com `external_id` repetido |
-| T12 | Acesso físico ao dispositivo com sessão aberta | Elevação de privilégio | Bloqueio automático por inatividade; reautenticação antes de exportar ou excluir | Teste de expiração por inatividade |
-| T13 | Dependência npm comprometida | Adulteração | Lockfile fixado; atualização controlada; auditoria de vulnerabilidade no CI | CI falha em vulnerabilidade de severidade alta |
-| T14 | Indisponibilidade do Supabase | Indisponibilidade | Nenhuma nesta fatia — risco aceito (desvio 3.1 da spec) | Estado "offline" exibido corretamente |
-| T15 | Provedor lê o dado financeiro | Exposição | Nenhuma — risco aceito e documentado (desvio 3.2 da spec) | — |
-| T16 | Falsificação de requisição entre sites | Falsificação | Validação de origem das Server Actions do Next.js, mantida ligada; `SameSite=Lax` | Teste com origem forjada |
+| T1 | Sequestro de sessão por roubo de token | Falsificação | Cookie `HttpOnly`/`Secure`/`SameSite=Lax`; nada em `localStorage`; rotação do ID ao autenticar | **Pendente.** Atributos definidos em `src/lib/session.ts`, sem teste automatizado; token novo a cada login (`abrirSessao`), mas o anterior não é revogado |
+| T2 | Força bruta na senha | Falsificação | argon2id com parâmetros versionados; limitação de tentativas por conta e por origem | `tests/unit/rate-limit.test.ts` (por conta). Limite por origem **pendente**; contagem em memória, zera ao reiniciar |
+| T3 | Um usuário lê dado de outro | Elevação de privilégio | `FORCE ROW LEVEL SECURITY`; role `money_tree_app` sem bypass; `SET LOCAL app.user_id` por transação | `tests/integration/001-base.test.ts`, `with-user.test.ts`, `004-saldos-transferencia.test.ts` (view com `security_invoker`), `auth.test.ts` (caminho anterior ao login) |
+| T4 | Bug na aplicação esquece o filtro por usuário | Exposição | Mesma RLS de T3 — a defesa não depende do código da aplicação | `tests/integration/001-base.test.ts` e `auth.test.ts`: sem `app.user_id`, o role da aplicação não lê nenhuma linha |
+| T5 | XSS via descrição ou estabelecimento | Adulteração | Escape em toda renderização; texto do banco tratado como não confiável ao ser lido; CSP restritiva sem script remoto | `tests/unit/interface-proibicoes.test.ts` (sem `dangerouslySetInnerHTML`); CSP com nonce em `src/middleware.ts`; descrição com HTML conferida à mão, renderizada como texto. Teste automatizado de renderização **pendente** |
+| T6 | Apagar lançamento liquidado para esconder histórico | Repúdio | Gatilho de banco bloqueia `DELETE` em `liquidado`/`conciliado`/`estornado`; correção só via estorno vinculado | `tests/integration/003-transactions.test.ts` e `repo-transactions.test.ts` |
+| T7 | Valor financeiro vaza em log | Exposição | Logger com redação; `audit_events` sem valores nem descrições | `tests/unit/logger.test.ts` (redação), `tests/integration/004-saldos-transferencia.test.ts` (sem coluna de valor em `audit_events`) e `audit.test.ts`. Varredura do log após gravar lançamento **pendente** |
+| T8 | Credencial do banco commitada | Exposição | `.gitignore` antes do primeiro commit; `.env.example` só com placeholders; spec sem credencial nem ref do projeto | **Pendente.** `.gitignore` e `.env.example` conferidos; sem varredura de segredos no pre-commit nem CI |
+| T9 | Saldo errado por ponto flutuante | Adulteração | `bigint` de centavos no banco; tipo marcado `Cents` no domínio; float proibido no módulo de dinheiro | `tests/unit/money.test.ts` e `balance.test.ts` (propriedades) |
+| T10 | Transferência grava um lado só | Adulteração | Função SQL cria os dois lados em uma transação | `tests/integration/004-saldos-transferencia.test.ts` e `acoes-lancamentos.test.ts` (estorno atinge os dois lados) |
+| T11 | Reimportação duplica lançamentos | Adulteração | UNIQUE `(user_id, source, external_id)` | `tests/integration/003-transactions.test.ts` |
+| T12 | Acesso físico ao dispositivo com sessão aberta | Elevação de privilégio | Bloqueio automático por inatividade; reautenticação antes de exportar ou excluir | `tests/integration/auth.test.ts` (ociosidade e expiração). Reautenticação antes de exportar ou excluir: não há exportação nesta fatia |
+| T13 | Dependência npm comprometida | Adulteração | Lockfile fixado; atualização controlada; auditoria de vulnerabilidade no CI | **Pendente.** Lockfile fixado; sem CI |
+| T14 | Indisponibilidade do Supabase | Indisponibilidade | Nenhuma nesta fatia — risco aceito (desvio 3.1 da spec) | **Risco aceito.** Sem teste |
+| T15 | Provedor lê o dado financeiro | Exposição | Nenhuma — risco aceito e documentado (desvio 3.2 da spec) | **Risco aceito.** Sem teste |
+| T16 | Falsificação de requisição entre sites | Falsificação | Validação de origem das Server Actions do Next.js, mantida ligada; `SameSite=Lax` | **Pendente.** Verificação de origem das Server Actions é o padrão do Next.js e não foi desligada; sem teste com origem forjada |
 
 ---
 

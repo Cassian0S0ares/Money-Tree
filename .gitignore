@@ -33,3 +33,4 @@ Thumbs.db
 # Workspace do executor de planos (scratch, nunca versionado)
 .superpowers/
 *.tsbuildinfo
+.pgdata-restore/
