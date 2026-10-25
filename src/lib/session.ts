@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { validarSessao } from '../data/sessions'
@@ -26,7 +27,11 @@ export async function lerCookieSessao(): Promise<string | null> {
   return jar.get(NOME)?.value ?? null
 }
 
-export async function usuarioAtual(): Promise<Usuario | null> {
+/**
+ * Layout e página pedem o usuário na mesma requisição; `cache` faz a sessão
+ * ser validada uma vez só por renderização.
+ */
+export const usuarioAtual = cache(async (): Promise<Usuario | null> => {
   const token = await lerCookieSessao()
   if (!token) return null
 
@@ -34,7 +39,7 @@ export async function usuarioAtual(): Promise<Usuario | null> {
   if (!sessao) return null
 
   return buscarUsuario(sessao.userId)
-}
+})
 
 /** Para páginas e ações que exigem login. Redireciona quando não há sessão. */
 export async function exigirUsuario(): Promise<Usuario> {
