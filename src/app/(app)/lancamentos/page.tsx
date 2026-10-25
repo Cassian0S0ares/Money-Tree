@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { listarContas } from '../../../data/accounts'
 import { listarCategorias } from '../../../data/categories'
 import { listarLancamentos } from '../../../data/transactions'
@@ -6,9 +5,9 @@ import { hojeEm, isoDate } from '../../../domain/dates'
 import { estaAtrasado } from '../../../domain/transaction'
 import { exigirUsuario } from '../../../lib/session'
 import { dataLonga } from '../../../lib/format'
-import { StatusBadge } from '../../../components/status-badge'
+import { ItemLancamento } from '../../../components/item-lancamento'
 import { SemDados, SemResultados } from '../../../components/states'
-import { CabecalhoPagina, Cartao, LinkBotao, Valor } from '../../../components/ui'
+import { CabecalhoPagina, Cartao, LinkBotao } from '../../../components/ui'
 import type { IsoDate, TransactionStatus } from '../../../domain/types'
 import { Filtros } from './filtros'
 
@@ -130,28 +129,12 @@ export default async function PaginaLancamentos({
             <ul className="divide-y divide-slate-100">
               {grupo.itens.map((item) => (
                 <li key={item.id}>
-                  <Link
-                    href={`/lancamentos/${item.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
-                  >
-                    <span className="min-w-0">
-                      {/* React escapa por padrão; o texto vem do usuário e é
-                          tratado como não confiável (§5.3). */}
-                      <span className="block truncate font-medium text-slate-900">
-                        {item.description}
-                      </span>
-                      <span className="block truncate text-xs text-slate-600">
-                        {nomeConta.get(item.accountId) ?? 'Conta'}
-                        {item.categoryId && ` · ${nomeCategoria.get(item.categoryId) ?? 'Categoria'}`}
-                        {item.kind === 'transferencia' && ' · Transferência'}
-                        {item.kind === 'ajuste' && ' · Ajuste'}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row-reverse sm:items-center sm:gap-3">
-                      <Valor centavos={item.amountCents} direcao={item.direction} className="font-medium" />
-                      <StatusBadge status={item.status} atrasado={estaAtrasado(item, hoje)} />
-                    </span>
-                  </Link>
+                  <ItemLancamento
+                    item={item}
+                    nomeConta={nomeConta.get(item.accountId) ?? 'Conta'}
+                    nomeCategoria={item.categoryId ? nomeCategoria.get(item.categoryId) ?? 'Categoria' : undefined}
+                    atrasado={estaAtrasado(item, hoje)}
+                  />
                 </li>
               ))}
             </ul>

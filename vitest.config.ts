@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     projects: [
       {
+        // O tsconfig deixa o JSX para o Next ("preserve"); nos testes, o
+        // esbuild precisa do runtime automático para renderizar componentes.
+        esbuild: { jsx: 'automatic' },
         test: {
           name: 'unit',
           include: ['tests/unit/**/*.test.ts'],

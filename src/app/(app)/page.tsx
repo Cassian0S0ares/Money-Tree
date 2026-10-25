@@ -5,9 +5,9 @@ import { somarSaldos } from '../../domain/balance'
 import { hojeEm } from '../../domain/dates'
 import { estaAtrasado } from '../../domain/transaction'
 import { exigirUsuario } from '../../lib/session'
-import { dataCurta, dataLonga, rotuloTipoConta } from '../../lib/format'
+import { rotuloTipoConta } from '../../lib/format'
 import { SemDados } from '../../components/states'
-import { StatusBadge } from '../../components/status-badge'
+import { ItemLancamento } from '../../components/item-lancamento'
 import { Cartao, LinkBotao, SeloEstimado, Valor } from '../../components/ui'
 
 export const metadata = { title: 'Saldos' }
@@ -134,27 +134,12 @@ export default async function PaginaSaldos() {
             <ul className="divide-y divide-slate-100">
               {recentes.itens.map((item) => (
                 <li key={item.id}>
-                  <Link
-                    href={`/lancamentos/${item.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-slate-900">
-                        {item.description}
-                      </span>
-                      <span className="block text-xs text-slate-600">
-                        <time dateTime={item.competenceDate} title={dataLonga(item.competenceDate)}>
-                          {dataCurta(item.competenceDate)}
-                        </time>
-                        {' · '}
-                        {nomeConta.get(item.accountId) ?? 'Conta'}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row-reverse sm:items-center sm:gap-3">
-                      <Valor centavos={item.amountCents} direcao={item.direction} className="font-medium" />
-                      <StatusBadge status={item.status} atrasado={estaAtrasado(item, hoje)} />
-                    </span>
-                  </Link>
+                  <ItemLancamento
+                    item={item}
+                    nomeConta={nomeConta.get(item.accountId) ?? 'Conta'}
+                    atrasado={estaAtrasado(item, hoje)}
+                    mostrarData
+                  />
                 </li>
               ))}
             </ul>
