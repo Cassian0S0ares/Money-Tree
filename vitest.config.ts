@@ -16,6 +16,12 @@ export default defineConfig({
           include: ['tests/integration/**/*.test.ts'],
           environment: 'node',
           hookTimeout: 30_000,
+          globalSetup: ['tests/integration/setup.ts'],
+          setupFiles: ['tests/integration/env.ts'],
+          // Um único banco para todos os arquivos: rodar em paralelo faria um
+          // teste truncar as tabelas no meio de outro.
+          pool: 'forks',
+          poolOptions: { forks: { singleFork: true } },
         },
       },
     ],

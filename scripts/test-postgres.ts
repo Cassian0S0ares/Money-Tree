@@ -18,6 +18,7 @@ function criarInstancia(): EmbeddedPostgres {
     password: 'postgres',
     port: PORT,
     persistent: false,
+    onLog: () => {},
   })
 }
 
