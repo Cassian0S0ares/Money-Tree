@@ -10,7 +10,34 @@ import { NextResponse, type NextRequest } from 'next/server'
  * aplica aos scripts dele. `'unsafe-inline'` em style é concessão ao
  * Tailwind; nenhum domínio externo é permitido.
  */
+const SEGUROS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
+ * Requisição que altera dado precisa vir do próprio site (ameaça T16). O
+ * Next já confere a origem das Server Actions; repetir aqui deixa a defesa
+ * explícita, testada e válida para qualquer POST futuro. A comparação é do
+ * host exato: "money.exemplo.com.site-malicioso.com" não passa por começar
+ * igual.
+ */
+function origemConfere(request: NextRequest): boolean {
+  if (SEGUROS.has(request.method)) return true
+
+  const origem = request.headers.get('origin')
+  const host = request.headers.get('host')
+  if (!origem || !host) return false
+
+  try {
+    return new URL(origem).host === host
+  } catch {
+    return false
+  }
+}
+
 export function middleware(request: NextRequest) {
+  if (!origemConfere(request)) {
+    return new NextResponse('Origem não permitida.', { status: 403 })
+  }
+
   const nonce = btoa(crypto.randomUUID())
   const desenvolvimento = process.env.NODE_ENV !== 'production'
 
