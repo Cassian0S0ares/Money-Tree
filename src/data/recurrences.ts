@@ -3,10 +3,14 @@ import { comoUsuario } from './with-user'
 import { dataOuNulo, paraLancamento, type Lancamento } from './transactions'
 import { somarDias } from '../domain/dates'
 import { cents } from '../domain/money'
+import { assertTransicao, estaAtrasado } from '../domain/transaction'
 import {
   RegraInvalidaError,
   ocorrencias,
+  planejarEdicaoSerie,
   validarRegra,
+  valorIncomum,
+  type AvisoValorIncomum,
   type PoliticaFimDeSemana,
   type RegraDatas,
   type UnidadeRecorrencia,
@@ -114,6 +118,21 @@ export function normalizarRegra(dados: NovaRegra): RegraDatas & NovaRegra {
     weekendPolicy: dados.weekendPolicy ?? (dados.kind === 'despesa' ? 'proximo_dia_util' : 'manter'),
   }
   validarRegra(completa)
+
+  // As mesmas regras do CHECK do banco, com mensagem que a pessoa entende.
+  if (dados.kind === 'transferencia') {
+    if (!dados.toAccountId) throw new RegraInvalidaError('Escolha a conta de destino')
+    if (dados.toAccountId === dados.accountId) {
+      throw new RegraInvalidaError('Origem e destino precisam ser contas diferentes')
+    }
+  } else if (!dados.nature) {
+    throw new RegraInvalidaError('Informe se é fixa ou variável')
+  }
+  if (!Number.isInteger(dados.amountCents) || dados.amountCents <= 0) {
+    throw new RegraInvalidaError('O valor precisa ser maior que zero')
+  }
+  if (!dados.description.trim()) throw new RegraInvalidaError('Informe uma descrição')
+
   return completa
 }
 
@@ -322,4 +341,346 @@ export async function ocorrenciasDaRegra(userId: string, regraId: string): Promi
     `
     return linhas.map(paraLancamento)
   })
+}
+
+/** Ocorrência pelo id, com as linhas do grupo (os dois lados, na transferência). */
+async function lerOcorrencia(
+  sql: postgres.TransactionSql,
+  id: string,
+): Promise<{ alvo: Lancamento; lados: Lancamento[]; regra: Regra }> {
+  const linhas = await sql`
+    select * from transactions
+    where id = ${id}
+       or transfer_group_id = (select transfer_group_id from transactions where id = ${id})
+    for update
+  `
+  const lados = linhas.map(paraLancamento)
+  const alvo = lados.find((lado) => lado.id === id)
+  if (!alvo || !alvo.recurrenceRuleId) throw new Error('Ocorrência não encontrada')
+
+  const [regra] = await sql`select * from recurrence_rules where id = ${alvo.recurrenceRuleId}`
+  return { alvo, lados, regra: paraRegra(regra) }
+}
+
+/** Pular é cancelar: a linha fica e impede a geração de recriá-la. */
+export async function pularOcorrencia(userId: string, id: string): Promise<void> {
+  await comoUsuario(userId, async (sql) => {
+    const { lados } = await lerOcorrencia(sql, id)
+    for (const lado of lados) assertTransicao(lado.status, 'cancelado')
+    await sql`
+      update transactions set status = 'cancelado', updated_at = now()
+      where id in ${sql(lados.map((lado) => lado.id))}
+    `
+  })
+}
+
+export interface EdicaoOcorrencia {
+  description?: string
+  amountCents?: Cents
+  dueDate?: IsoDate
+  competenceDate?: IsoDate
+  categoryId?: string | null
+}
+
+/**
+ * "Só esta" (spec 6.4). Marca a ocorrência como exceção, e a série nunca
+ * mais mexe nela. Ocorrência paga é recusada pelo gatilho de imutabilidade:
+ * a correção dela é estorno.
+ */
+export async function editarOcorrencia(
+  userId: string,
+  id: string,
+  dados: EdicaoOcorrencia,
+): Promise<Lancamento> {
+  return comoUsuario(userId, async (sql) => {
+    const { lados } = await lerOcorrencia(sql, id)
+
+    const colunas: Record<string, unknown> = { is_exception: true, updated_at: new Date() }
+    if (dados.description !== undefined) colunas.description = dados.description
+    if (dados.amountCents !== undefined) colunas.amount_cents = dados.amountCents
+    if (dados.dueDate !== undefined) colunas.due_date = dados.dueDate
+    if (dados.competenceDate !== undefined) colunas.competence_date = dados.competenceDate
+    // Transferência não leva categoria; nos dois lados, ela fica como está.
+    if (dados.categoryId !== undefined && lados.length === 1) colunas.category_id = dados.categoryId
+
+    const atualizadas = await sql`
+      update transactions set ${sql(colunas)}
+      where id in ${sql(lados.map((lado) => lado.id))}
+      returning *
+    `
+    return paraLancamento(atualizadas.find((linha) => linha.id === id)!)
+  })
+}
+
+/**
+ * Paga a ocorrência com o valor real. Valor e estado mudam na mesma
+ * instrução, enquanto a linha ainda é prevista: depois de liquidada, o
+ * gatilho de imutabilidade não deixaria mudar o valor. Na transferência,
+ * os dois lados.
+ */
+export async function pagarOcorrencia(
+  userId: string,
+  id: string,
+  pagamento: { valor: Cents; quando: IsoDate },
+): Promise<{ lancamento: Lancamento; aviso: AvisoValorIncomum | null }> {
+  if (!Number.isInteger(pagamento.valor) || pagamento.valor <= 0) {
+    throw new Error('O valor pago precisa ser maior que zero')
+  }
+
+  return comoUsuario(userId, async (sql) => {
+    const { alvo, lados, regra } = await lerOcorrencia(sql, id)
+    for (const lado of lados) assertTransicao(lado.status, 'liquidado')
+
+    const anteriores = await sql<{ amount_cents: string }[]>`
+      select amount_cents from transactions
+      where recurrence_series_id = ${regra.seriesId}
+        and status in ('liquidado', 'conciliado')
+        and direction = ${alvo.direction}
+        and id <> ${alvo.id}
+      order by occurrence_date desc
+      limit 3
+    `
+
+    const atualizadas = await sql`
+      update transactions
+      set amount_cents = ${pagamento.valor}, status = 'liquidado',
+          settled_date = ${pagamento.quando}, updated_at = now()
+      where id in ${sql(lados.map((lado) => lado.id))}
+      returning *
+    `
+
+    return {
+      lancamento: paraLancamento(atualizadas.find((linha) => linha.id === id)!),
+      aviso: valorIncomum(
+        pagamento.valor,
+        anteriores.map((linha) => cents(Number(linha.amount_cents))),
+      ),
+    }
+  })
+}
+
+/** Apaga as ocorrências futuras que a série ainda pode substituir. */
+async function apagarFuturasNaoTocadas(
+  sql: postgres.TransactionSql,
+  regraId: string,
+  aPartirDe: IsoDate,
+): Promise<void> {
+  await sql`
+    delete from transactions
+    where recurrence_rule_id = ${regraId}
+      and status = 'previsto'
+      and not is_exception
+      and occurrence_date >= ${aPartirDe}
+  `
+}
+
+/**
+ * Pausa: as futuras não tocadas somem e a geração para. As atrasadas ficam,
+ * porque continuam devidas.
+ */
+export async function pausarRegra(userId: string, id: string, hoje: IsoDate): Promise<void> {
+  await comoUsuario(userId, async (sql) => {
+    const [linha] = await sql`
+      update recurrence_rules set status = 'pausada', paused_at = ${hoje}, updated_at = now()
+      where id = ${id} and status = 'ativa'
+      returning id
+    `
+    if (!linha) throw new Error('Só uma recorrência ativa pode ser pausada')
+    await apagarFuturasNaoTocadas(sql, id, hoje)
+  })
+}
+
+/** Retoma de hoje em diante: a janela pausada não é preenchida para trás. */
+export async function retomarRegra(userId: string, id: string, hoje: IsoDate): Promise<void> {
+  await comoUsuario(userId, async (sql) => {
+    const [linha] = await sql`
+      update recurrence_rules
+      set status = 'ativa', paused_at = null, generated_until = ${somarDias(hoje, -1)}, updated_at = now()
+      where id = ${id} and status = 'pausada'
+      returning id
+    `
+    if (!linha) throw new Error('Só uma recorrência pausada pode ser retomada')
+  })
+}
+
+/**
+ * Encerra de vez. A regra não é apagada (ocorrências pagas apontam para
+ * ela) e não volta; para recomeçar, cria-se outra. O estado basta para
+ * parar a geração, sem mexer em `end_date`, que conflitaria com um fim por
+ * número de vezes.
+ */
+export async function encerrarRegra(userId: string, id: string, hoje: IsoDate): Promise<void> {
+  await comoUsuario(userId, async (sql) => {
+    const [linha] = await sql`
+      update recurrence_rules set status = 'encerrada', paused_at = null, updated_at = now()
+      where id = ${id} and status <> 'encerrada'
+      returning id
+    `
+    if (!linha) throw new Error('Esta recorrência já está encerrada')
+    await apagarFuturasNaoTocadas(sql, id, hoje)
+  })
+}
+
+export type MudancasSerie = Partial<
+  Pick<
+    NovaRegra,
+    | 'description' | 'amountCents' | 'amountIsEstimate' | 'accountId' | 'toAccountId'
+    | 'categoryId' | 'nature' | 'unit' | 'interval' | 'startDate' | 'weekendPolicy'
+  >
+>
+
+/**
+ * "Desta em diante" (spec 6.4), a partir da ocorrência `ocorrenciaId`.
+ * O plano vem do domínio; aqui só se executa. Nada que foi pago, pulado ou
+ * editado sozinho é alterado (T19): o gatilho de imutabilidade é a segunda
+ * defesa, e a chave única na série impede a regra nova de recriar datas
+ * ocupadas.
+ */
+export async function editarDestaEmDiante(
+  userId: string,
+  ocorrenciaId: string,
+  mudancas: MudancasSerie,
+  hoje: IsoDate,
+): Promise<Regra> {
+  return comoUsuario(userId, async (sql) => {
+    const { alvo, regra } = await lerOcorrencia(sql, ocorrenciaId)
+    const aPartirDe = alvo.occurrenceDate!
+
+    const existentes = (
+      await sql`select * from transactions where recurrence_rule_id = ${regra.id}`
+    ).map(paraLancamento)
+
+    const plano = planejarEdicaoSerie({
+      regra,
+      aPartirDe,
+      ocorrencias: existentes.map((o) => ({
+        id: o.id, nominal: o.occurrenceDate!, status: o.status, isException: o.isException,
+      })),
+    })
+
+    const inicio = mudancas.startDate ?? aPartirDe
+    const mudouDia = mudancas.startDate !== undefined || mudancas.unit !== undefined
+    const nova = normalizarRegra({
+      kind: regra.kind,
+      description: mudancas.description ?? regra.description,
+      accountId: mudancas.accountId ?? regra.accountId,
+      toAccountId: mudancas.toAccountId !== undefined ? mudancas.toAccountId : regra.toAccountId,
+      categoryId: mudancas.categoryId !== undefined ? mudancas.categoryId : regra.categoryId,
+      nature: mudancas.nature !== undefined ? mudancas.nature : regra.nature,
+      amountCents: mudancas.amountCents ?? regra.amountCents,
+      amountIsEstimate: mudancas.amountIsEstimate ?? regra.amountIsEstimate,
+      unit: mudancas.unit ?? regra.unit,
+      interval: mudancas.interval ?? regra.interval,
+      startDate: inicio,
+      // Sem mudança de data ou de unidade, preserva o dia pretendido: o
+      // aluguel "todo dia 31" cortado em 30 de abril continua sendo do 31.
+      dayOfMonth: mudouDia ? null : regra.dayOfMonth,
+      endDate: regra.endDate !== null && regra.endDate >= inicio ? regra.endDate : null,
+      maxOccurrences: plano.restantes,
+      weekendPolicy: mudancas.weekendPolicy ?? regra.weekendPolicy,
+    })
+
+    if (nova.startDate < somarDias(hoje, -PASSADO_MAX_DIAS)) {
+      throw new RegraInvalidaError(
+        `A nova primeira ocorrência pode ser no máximo ${PASSADO_MAX_DIAS} dias atrás`,
+      )
+    }
+
+    if (plano.apagar.length > 0) {
+      await sql`delete from transactions where id in ${sql(plano.apagar)} and status = 'previsto'`
+    }
+
+    const colunas = {
+      description: nova.description,
+      account_id: nova.accountId,
+      to_account_id: nova.toAccountId ?? null,
+      category_id: nova.categoryId ?? null,
+      nature: nova.nature ?? null,
+      amount_cents: nova.amountCents,
+      amount_is_estimate: nova.amountIsEstimate ?? false,
+      unit: nova.unit,
+      interval_count: nova.interval,
+      start_date: nova.startDate,
+      day_of_month: nova.dayOfMonth,
+      end_date: nova.endDate,
+      max_occurrences: nova.maxOccurrences,
+      weekend_policy: nova.weekendPolicy,
+    }
+
+    if (plano.modo === 'substituir') {
+      const [linha] = await sql`
+        update recurrence_rules
+        set ${sql(colunas)}, generated_until = null, updated_at = now()
+        where id = ${regra.id}
+        returning *
+      `
+      return paraRegra(linha)
+    }
+
+    // A antiga termina na véspera. Termina por data, então o fim por número
+    // de vezes sai (os dois não coexistem), sem mudar o que ela já gerou.
+    await sql`
+      update recurrence_rules
+      set end_date = ${plano.fimDaAntiga}, max_occurrences = null, updated_at = now()
+      where id = ${regra.id}
+    `
+    const [linha] = await sql`
+      insert into recurrence_rules ${sql({
+        ...colunas,
+        user_id: userId,
+        kind: regra.kind,
+        series_id: regra.seriesId,
+        status: regra.status === 'pausada' ? 'ativa' : regra.status,
+      })}
+      returning *
+    `
+    return paraRegra(linha)
+  })
+}
+
+export interface ContaProxima extends Lancamento {
+  atrasado: boolean
+  /** Valor ainda estimado: ocorrência de regra de valor variável. */
+  estimado: boolean
+}
+
+/**
+ * Previstos e pendentes com vencimento até `hoje + dias`, atrasados
+ * primeiro. As somas separam pagar e receber e deixam transferência de
+ * fora, porque transferência não é gasto. Não é dinheiro livre: esse
+ * cálculo é da fatia 5.
+ */
+export async function proximasContas(
+  userId: string,
+  hoje: IsoDate,
+  dias: number,
+): Promise<{ itens: ContaProxima[]; aPagar: Cents; aReceber: Cents }> {
+  const ate = somarDias(hoje, dias)
+
+  const itens = await comoUsuario(userId, async (sql) => {
+    const linhas = await sql`
+      select t.*, coalesce(r.amount_is_estimate, false) as estimado
+      from transactions t
+      left join recurrence_rules r on r.id = t.recurrence_rule_id
+      where t.status in ('previsto', 'pendente')
+        and coalesce(t.due_date, t.competence_date) <= ${ate}
+      order by coalesce(t.due_date, t.competence_date), t.kind, t.direction
+    `
+    return linhas.map((linha) => {
+      const lancamento = paraLancamento(linha)
+      return {
+        ...lancamento,
+        atrasado: estaAtrasado(lancamento, hoje),
+        estimado: linha.estimado as boolean,
+      }
+    })
+  })
+
+  // Atrasadas primeiro; dentro de cada grupo, a ordem do vencimento.
+  itens.sort((a, b) => Number(b.atrasado) - Number(a.atrasado))
+
+  const somar = (kind: 'receita' | 'despesa') =>
+    cents(itens.filter((i) => i.kind === kind).reduce((soma, i) => soma + i.amountCents, 0))
+
+  return { itens, aPagar: somar('despesa'), aReceber: somar('receita') }
 }
