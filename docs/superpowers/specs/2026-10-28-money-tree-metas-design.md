@@ -180,7 +180,7 @@ A tela diz qual ritmo usou: "No ritmo planejado de R$ 500/mês" ou "Na média do
 
 Uma meta com data-alvo está **fora do prazo** quando:
 
-- o mês provável termina depois da data-alvo; ou
+- o mês provável começa depois da data-alvo (o período que contém a data-alvo conta como mês de contribuição, como em 3.4); ou
 - não há ritmo e falta > 0; ou
 - a data-alvo já passou e falta > 0 (**prazo vencido**).
 
