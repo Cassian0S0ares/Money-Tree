@@ -23,6 +23,7 @@ export type GoalPriority = 'alta' | 'media' | 'baixa'
 export type AllocationKind = 'aporte' | 'resgate' | 'liberacao'
 
 export interface Movimento {
+  /** Positivo para `aporte`; negativo para `resgate` e `liberacao`. */
   amountCents: Cents
   kind: AllocationKind
   occurredOn: IsoDate
@@ -120,6 +121,186 @@ export function mesProvavel(falta: Cents, ritmo: Ritmo, hoje: IsoDate, diaInicio
     periodo = proximoPeriodo(periodo, diaInicio)
   }
   return periodo
+}
+
+export type SituacaoMeta = 'atingida' | 'prazo_vencido' | 'fora_do_prazo' | 'no_prazo' | 'sem_prazo'
+
+export interface OpcoesPrazo {
+  /** Para fechar no prazo; nulo com prazo vencido (não restam meses). */
+  aumentarContribuicao: Cents | null
+  /** Reservado + ritmo × meses restantes; sem ritmo, só o reservado; nulo com prazo vencido. */
+  reduzirAlvo: Cents | null
+  /** Fim do mês provável; nulo sem ritmo (não há como estimar). */
+  mudarData: IsoDate | null
+}
+
+export interface AvaliacaoMeta {
+  falta: Cents
+  percentual: number
+  atingida: boolean
+  mesesRestantes: number | null
+  necessaria: Cents | null
+  ritmo: Ritmo
+  mesProvavel: Periodo | null
+  situacao: SituacaoMeta
+  /** Falta na data-alvo, no ritmo atual; só em fora_do_prazo e prazo_vencido. */
+  faltariaNaData: Cents | null
+  /** Períodos entre a data-alvo e o mês provável; só em fora_do_prazo com ritmo. */
+  mesesDeAtraso: number | null
+  /** Só quando fora_do_prazo ou prazo_vencido (spec 6.4). */
+  opcoes: OpcoesPrazo | null
+}
+
+/** Conta passos de `proximoPeriodo`/`periodoAnterior` entre dois períodos; positivo quando `ate` vem depois de `de`. */
+function diferencaEmPeriodos(de: Periodo, ate: Periodo, diaInicio: number): number {
+  if (de.inicio === ate.inicio) return 0
+
+  let passos = 0
+  if (de.inicio < ate.inicio) {
+    let periodo = de
+    while (periodo.inicio < ate.inicio) {
+      periodo = proximoPeriodo(periodo, diaInicio)
+      passos++
+    }
+    return passos
+  }
+
+  let periodo = de
+  while (periodo.inicio > ate.inicio) {
+    periodo = periodoAnterior(periodo, diaInicio)
+    passos++
+  }
+  return -passos
+}
+
+/**
+ * Situação da meta, opções de prazo e o que faltaria na data-alvo (spec
+ * 6.4, 6.7). Atingida vence qualquer outra situação. Sem data-alvo, não há
+ * como estar no prazo, fora dele ou vencida: a meta fica "sem prazo".
+ */
+export function avaliarMeta(e: {
+  alvo: Cents
+  reservado: Cents
+  dataAlvo: IsoDate | null
+  planejado: Cents | null
+  movimentos: Movimento[]
+  hoje: IsoDate
+  diaInicio: number
+}): AvaliacaoMeta {
+  const { alvo, reservado, dataAlvo, planejado, movimentos, hoje, diaInicio } = e
+  const { falta, percentual, atingida } = progresso(alvo, reservado)
+
+  if (atingida) {
+    return {
+      falta,
+      percentual,
+      atingida,
+      mesesRestantes: dataAlvo === null ? null : mesesRestantes(hoje, dataAlvo, diaInicio),
+      necessaria: null,
+      ritmo: null,
+      mesProvavel: mesFinanceiro(hoje, diaInicio),
+      situacao: 'atingida',
+      faltariaNaData: null,
+      mesesDeAtraso: null,
+      opcoes: null,
+    }
+  }
+
+  if (dataAlvo === null) {
+    const semData = ritmo(planejado, movimentos, hoje, diaInicio)
+    return {
+      falta,
+      percentual,
+      atingida,
+      mesesRestantes: null,
+      necessaria: null,
+      ritmo: semData,
+      mesProvavel: mesProvavel(falta, semData, hoje, diaInicio),
+      situacao: 'sem_prazo',
+      faltariaNaData: null,
+      mesesDeAtraso: null,
+      opcoes: null,
+    }
+  }
+
+  const restantes = mesesRestantes(hoje, dataAlvo, diaInicio)
+  const r = ritmo(planejado, movimentos, hoje, diaInicio)
+  const provavel = mesProvavel(falta, r, hoje, diaInicio)
+  const necessariaVal = contribuicaoNecessaria(falta, restantes)
+
+  let situacao: SituacaoMeta
+  if (dataAlvo < hoje) {
+    situacao = 'prazo_vencido'
+  } else if (r === null || provavel!.fim > dataAlvo) {
+    situacao = 'fora_do_prazo'
+  } else {
+    situacao = 'no_prazo'
+  }
+
+  let faltariaNaData: Cents | null = null
+  let mesesDeAtraso: number | null = null
+  let opcoes: OpcoesPrazo | null = null
+
+  if (situacao === 'fora_do_prazo' || situacao === 'prazo_vencido') {
+    faltariaNaData = r === null ? falta : cents(Math.max(0, falta - r.valor * restantes))
+
+    if (situacao === 'fora_do_prazo' && r !== null) {
+      mesesDeAtraso = diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel!, diaInicio)
+    }
+
+    opcoes =
+      situacao === 'prazo_vencido'
+        ? {
+            aumentarContribuicao: null,
+            reduzirAlvo: null,
+            mudarData: provavel === null ? null : provavel.fim,
+          }
+        : {
+            aumentarContribuicao: necessariaVal,
+            reduzirAlvo: r === null ? reservado : cents(reservado + r.valor * restantes),
+            mudarData: r === null ? null : provavel!.fim,
+          }
+  }
+
+  return {
+    falta,
+    percentual,
+    atingida,
+    mesesRestantes: restantes,
+    necessaria: necessariaVal,
+    ritmo: r,
+    mesProvavel: provavel,
+    situacao,
+    faltariaNaData,
+    mesesDeAtraso,
+    opcoes,
+  }
+}
+
+/**
+ * Simula um valor mensal sem gravar nada (spec 6.5). Usa a contribuição dada
+ * como se fosse o ritmo planejado; movimentos não entram na conta.
+ */
+export function simular(
+  e: { alvo: Cents; reservado: Cents; dataAlvo: IsoDate | null; hoje: IsoDate; diaInicio: number },
+  contribuicao: Cents,
+): { mesProvavel: Periodo | null; mesesDeDiferenca: number | null; faltariaNaData: Cents | null } {
+  const { alvo, reservado, dataAlvo, hoje, diaInicio } = e
+  const { falta } = progresso(alvo, reservado)
+
+  const ritmoSimulado: Ritmo = contribuicao > 0 ? { origem: 'planejado', valor: contribuicao } : null
+  const provavel = mesProvavel(falta, ritmoSimulado, hoje, diaInicio)
+
+  if (dataAlvo === null) {
+    return { mesProvavel: provavel, mesesDeDiferenca: null, faltariaNaData: null }
+  }
+
+  const restantes = mesesRestantes(hoje, dataAlvo, diaInicio)
+  const faltariaNaData = cents(Math.max(0, falta - contribuicao * restantes))
+  const mesesDeDiferenca =
+    contribuicao > 0 ? diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel!, diaInicio) : null
+
+  return { mesProvavel: provavel, mesesDeDiferenca, faltariaNaData }
 }
 
 /**
