@@ -14,12 +14,21 @@ import {
   pagarOcorrencia,
   pularOcorrencia,
 } from '../../src/data/recurrences'
+import { definirLimite, removerOrcamentoAcao } from '../../src/app/(app)/orcamentos/acoes'
 import { log } from '../../src/lib/logger'
 import { isoDate } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
 
 const DESCRICAO = 'Farmacia-Sigilosa-7731'
 const VALOR = 987_654
+
+// As ações de orçamento rodam de verdade; só a sessão e o cache do Next são
+// trocados, porque fora de uma requisição não há cookie nem rota.
+const sessao = vi.hoisted(() => ({ usuario: '' }))
+vi.mock('../../src/lib/session', () => ({
+  exigirUsuario: async () => ({ id: sessao.usuario, timezone: 'America/Sao_Paulo' }),
+}))
+vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
 let saida: string[] = []
 
@@ -120,5 +129,49 @@ describe('AMEAÇA T7: valor financeiro não vaza em log', () => {
     await garantirOcorrencias(usuario, hoje)
 
     semDadoFinanceiro()
+  })
+
+  it('o fluxo de orçamento não escreve valor no log nem na trilha de auditoria', async () => {
+    const usuario = await criarUsuario()
+    sessao.usuario = usuario
+    const categoria = await criarCategoria(usuario, { name: 'Saúde', kind: 'despesa' })
+    const formulario = (campos: Record<string, string>) => {
+      const dados = new FormData()
+      for (const [chave, valor] of Object.entries(campos)) dados.set(chave, valor)
+      return dados
+    }
+
+    // 987.654 centavos digitados como o usuário digita: "9.876,54".
+    const criado = await definirLimite({}, formulario({
+      categoriaId: categoria.id, valor: '9.876,54', aPartirDe: '2026-10-01',
+    }))
+    expect(criado).toEqual({ sucesso: true })
+    const [orcamento] = await sqlAdmin<{ id: string }[]>`select id from budgets`
+
+    await definirLimite({}, formulario({
+      categoriaId: categoria.id, orcamentoId: orcamento.id, valor: '9.876,55', aPartirDe: '2026-11-01',
+    }))
+    await definirLimite({}, formulario({
+      categoriaId: categoria.id, orcamentoId: orcamento.id, valor: '9.876,55', aPartirDe: '2026-12-01',
+      rollover: 'on',
+    }))
+    await removerOrcamentoAcao(formulario({ id: orcamento.id }))
+
+    const eventos = await sqlAdmin<Record<string, unknown>[]>`
+      select * from audit_events order by occurred_at, event_type
+    `
+    expect(eventos.map((e) => e.event_type).sort()).toEqual([
+      'orcamento.acumulacao_alterada', 'orcamento.criado',
+      'orcamento.limite_alterado', 'orcamento.limite_alterado', 'orcamento.removido',
+    ].sort())
+    const trilha = JSON.stringify(eventos)
+    for (const proibido of [String(VALOR), String(VALOR + 1), '9.876,5']) {
+      expect(trilha).not.toContain(proibido)
+    }
+    // O identificador real do orçamento também não entra: só o pseudônimo.
+    expect(trilha).not.toContain(orcamento.id)
+
+    semDadoFinanceiro()
+    expect(saida.join('\n')).not.toContain(String(VALOR + 1))
   })
 })
