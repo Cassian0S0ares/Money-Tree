@@ -228,10 +228,14 @@ export function avaliarMeta(e: {
   const provavel = mesProvavel(falta, r, hoje, diaInicio)
   const necessariaVal = contribuicaoNecessaria(falta, restantes)
 
+  // O período que contém a data-alvo conta como mês de contribuição por
+  // inteiro (spec 3.4, vinculante — fix de 6.4 no commit c7660c6): fora do
+  // prazo é o mês provável *começar* depois da data-alvo, não terminar
+  // depois dela. Início igual à data-alvo ainda está no prazo.
   let situacao: SituacaoMeta
   if (dataAlvo < hoje) {
     situacao = 'prazo_vencido'
-  } else if (r === null || provavel!.fim > dataAlvo) {
+  } else if (r === null || provavel!.inicio > dataAlvo) {
     situacao = 'fora_do_prazo'
   } else {
     situacao = 'no_prazo'

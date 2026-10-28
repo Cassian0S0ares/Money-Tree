@@ -1,9 +1,8 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { isoDate, mesFinanceiro } from '../../src/domain/dates'
+import { isoDate, somarDias } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
 import type { Cents, IsoDate } from '../../src/domain/types'
-import { proximoPeriodo } from '../../src/domain/budget'
 import { avaliarMeta, simular, type Movimento } from '../../src/domain/goal'
 
 const hoje = isoDate('2026-10-15')
@@ -102,9 +101,9 @@ describe('avaliarMeta: fora do prazo', () => {
     expect(r.mesesDeAtraso).toBeNull()
   })
 
-  it('fim do mês provável depois da data-alvo: fora_do_prazo', () => {
+  it('mês provável começa depois da data-alvo: fora_do_prazo', () => {
     // falta = 8.000 (alvo 10.000, reservado 2.000); ritmo 1.000/mês -> 8 meses -> maio/2027.
-    // data-alvo em novembro/2026: mês provável termina bem depois.
+    // data-alvo em novembro/2026: o mês provável começa bem depois.
     const r = avaliarMeta(
       entrada({
         reservado: cents(2_000_00),
@@ -113,7 +112,7 @@ describe('avaliarMeta: fora do prazo', () => {
       }),
     )
     expect(r.situacao).toBe('fora_do_prazo')
-    expect(r.mesProvavel!.fim > isoDate('2026-11-15')).toBe(true)
+    expect(r.mesProvavel!.inicio > isoDate('2026-11-15')).toBe(true)
   })
 
   it('opções: aumentarContribuicao = necessaria; reduzirAlvo = reservado + ritmo × mesesRestantes; mudarData = fim do mês provável', () => {
@@ -154,12 +153,16 @@ describe('avaliarMeta: fora do prazo', () => {
 })
 
 describe('avaliarMeta: no prazo', () => {
-  it('mês provável termina exatamente na data-alvo: no_prazo (borda)', () => {
-    // falta = 8.000; ritmo 1.000/mês -> 8 meses a partir de out (período atual) -> maio/2027 (31/05).
+  // falta = 8.000; ritmo 1.000/mês -> 8 meses a partir de out (período atual) -> maio/2027
+  // (início 01/05, fim 31/05). Fix de 6.4 (commit c7660c6, spec 3.4 é vinculante): o
+  // período que contém a data-alvo conta como mês de contribuição por inteiro, então a
+  // borda é o *início* do mês provável, não o fim.
+
+  it('data-alvo igual ao início do mês provável: no_prazo (borda)', () => {
     const r = avaliarMeta(
       entrada({
         reservado: cents(2_000_00),
-        dataAlvo: isoDate('2027-05-31'),
+        dataAlvo: isoDate('2027-05-01'),
         planejado: cents(1_000_00),
       }),
     )
@@ -168,6 +171,18 @@ describe('avaliarMeta: no prazo', () => {
     expect(r.opcoes).toBeNull()
     expect(r.faltariaNaData).toBeNull()
     expect(r.mesesDeAtraso).toBeNull()
+  })
+
+  it('data-alvo um dia antes do início do mês provável: fora_do_prazo (borda)', () => {
+    const r = avaliarMeta(
+      entrada({
+        reservado: cents(2_000_00),
+        dataAlvo: isoDate('2027-04-30'),
+        planejado: cents(1_000_00),
+      }),
+    )
+    expect(r.mesProvavel).toEqual({ inicio: '2027-05-01', fim: '2027-05-31' })
+    expect(r.situacao).toBe('fora_do_prazo')
   })
 
   it('data-alvo bem depois do mês provável: no_prazo', () => {
@@ -230,24 +245,20 @@ describe('simular', () => {
   })
 })
 
-// A comparação de 6.4 é pelo dia exato ("fim do mês provável > data-alvo"), mas
-// mesesRestantes e necessaria raciocinam em períodos inteiros (spec 3.4): o
-// período que contém a data-alvo conta como restante por inteiro, mesmo que a
-// data caia no meio dele. Por isso, quando a data-alvo cai no meio de um
-// período, nem aumentar a contribuição nem reduzir o alvo garantem terminar
-// exatamente até aquele dia — só "mudar a data" resolve com certeza (ela vira
-// o fim do próprio mês provável). Para testar a propriedade 5 nos dois outros
-// casos como o controller descreveu, a data-alvo gerada aqui é sempre o fim de
-// um período: aí "terminar dentro do período" e "terminar até a data-alvo"
-// coincidem.
-function dataAlvoNoFimDoPeriodo(periodosAFrente: number): string {
-  let periodo = mesFinanceiro(hoje, diaInicio)
-  for (let i = 0; i < periodosAFrente; i++) periodo = proximoPeriodo(periodo, diaInicio)
-  return periodo.fim
+// Fix de 6.4 (commit c7660c6): spec 3.4 é vinculante — o período que contém a
+// data-alvo conta como mês de contribuição por inteiro, então "fora do prazo"
+// é o mês provável *começar* depois da data-alvo (não terminar depois dela).
+// Com essa regra, aumentar a contribuição e reduzir o alvo pousam o mês
+// provável em um período de índice <= o da data-alvo (necessaria e
+// reduzirAlvo fecham, no pior caso, exatamente nos meses restantes), então a
+// propriedade vale para qualquer data-alvo, inclusive no meio de um período —
+// não precisa mais restringir ao fim do período.
+function dataAlvoDaquiA(diasAFrente: number): string {
+  return somarDias(hoje, diasAFrente)
 }
 
 describe('invariantes (spec 6.8, propriedade 5)', () => {
-  it('5. aplicar qualquer opção de meta fora do prazo resolve a situação', () => {
+  it('5. aplicar qualquer opção de meta fora do prazo resolve a situação (data-alvo em qualquer dia do período)', () => {
     fc.assert(
       fc.property(
         // Faixas pequenas de propósito (como no invariante 3 de budget-avaliacao):
@@ -255,11 +266,11 @@ describe('invariantes (spec 6.8, propriedade 5)', () => {
         fc.integer({ min: 100_00, max: 500_000 }),
         fc.integer({ min: 0, max: 400_000 }),
         fc.integer({ min: 10_000, max: 500_000 }),
-        fc.integer({ min: 1, max: 24 }),
-        (alvoVal, reservadoVal, planejadoVal, periodosAFrente) => {
+        fc.integer({ min: 1, max: 24 * 31 }),
+        (alvoVal, reservadoVal, planejadoVal, diasAFrente) => {
           const alvo = cents(Math.max(alvoVal, reservadoVal + 1))
           const reservado = cents(reservadoVal)
-          const dataAlvo = isoDate(dataAlvoNoFimDoPeriodo(periodosAFrente))
+          const dataAlvo = isoDate(dataAlvoDaquiA(diasAFrente))
           const planejado = cents(planejadoVal)
 
           const base = avaliarMeta({ alvo, reservado, dataAlvo, planejado, movimentos: [], hoje, diaInicio })
@@ -307,6 +318,52 @@ describe('invariantes (spec 6.8, propriedade 5)', () => {
         },
       ),
     )
+  })
+
+  it('5. contraexemplo original: aumentarContribuicao e reduzirAlvo agora resolvem', () => {
+    // Achado pelo fast-check antes do fix de 6.4 (seed shrunk para
+    // [10001,0,10000,1]): com a comparação antiga (fim do mês provável > dia
+    // exato da data-alvo), este caso ficava fora_do_prazo mesmo depois de
+    // aumentar a contribuição para `necessaria` ou reduzir o alvo. Com a regra
+    // por início de período (spec 3.4 vinculante), a própria base já nasce
+    // no_prazo — por isso `opcoes` é nulo aqui — mas os valores que antes
+    // alimentariam as opções (`necessaria` e `reservado + ritmo × mesesRestantes`)
+    // continuam disponíveis para exibição e, aplicados, não reintroduzem
+    // fora_do_prazo.
+    const alvo = cents(10_001)
+    const reservado = cents(0)
+    const dataAlvo = isoDate('2026-11-15') // ~1 mês depois de hoje (2026-10-15)
+    const planejado = cents(10_000)
+
+    const base = avaliarMeta({ alvo, reservado, dataAlvo, planejado, movimentos: [], hoje, diaInicio })
+    expect(base.situacao).toBe('no_prazo')
+    expect(base.opcoes).toBeNull()
+    expect(base.necessaria).toBe(5_001)
+
+    const aumentarContribuicao = base.necessaria!
+    const reduzirAlvo = reservado + base.ritmo!.valor * base.mesesRestantes!
+
+    const comContribuicaoAumentada = avaliarMeta({
+      alvo,
+      reservado,
+      dataAlvo,
+      planejado: cents(aumentarContribuicao),
+      movimentos: [],
+      hoje,
+      diaInicio,
+    })
+    expect(comContribuicaoAumentada.situacao).not.toBe('fora_do_prazo')
+
+    const comAlvoReduzido = avaliarMeta({
+      alvo: cents(reduzirAlvo),
+      reservado,
+      dataAlvo,
+      planejado,
+      movimentos: [],
+      hoje,
+      diaInicio,
+    })
+    expect(comAlvoReduzido.situacao).not.toBe('fora_do_prazo')
   })
 
   it('5. prazo vencido: só mudarData resolve; hoje permanece o mesmo', () => {
