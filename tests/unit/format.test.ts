@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dataCurta, dataLonga, dinheiro, rotuloStatus } from '../../src/lib/format'
+import { dataCurta, dataLonga, dinheiro, mesAno, rotuloStatus } from '../../src/lib/format'
 import { cents } from '../../src/domain/money'
 import { isoDate } from '../../src/domain/dates'
 
@@ -55,5 +55,11 @@ describe('rotuloPeriodo', () => {
     expect(rotuloPeriodo(isoDate('2026-10-01'), isoDate('2026-10-31'))).toBe('outubro de 2026')
     expect(rotuloPeriodo(isoDate('2026-10-05'), isoDate('2026-11-04'))).toBe('5 de outubro a 4 de novembro de 2026')
     expect(rotuloPeriodo(isoDate('2026-12-05'), isoDate('2027-01-04'))).toBe('5 de dezembro de 2026 a 4 de janeiro de 2027')
+  })
+})
+
+describe('mês provável das metas', () => {
+  it('é o mês e o ano do início do período', () => {
+    expect(mesAno(isoDate('2028-03-05'))).toBe('março de 2028')
   })
 })
