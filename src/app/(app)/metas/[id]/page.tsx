@@ -38,6 +38,10 @@ function Explicacao({ meta }: { meta: MetaAvaliada }) {
     frases.push(
       `No ritmo atual, conclui em ${mesAno(a.mesProvavel.inicio)}, ${meses(a.mesesDeAtraso)} depois da data-alvo.`,
     )
+  } else if (a.situacao === 'fora_do_prazo' && a.ritmo && !a.mesProvavel) {
+    // Ritmo existe, mas é minúsculo demais perto do alvo: a data passa do
+    // limite de 100 anos (achado em revisão) e não dá para estimar.
+    frases.push('No ritmo atual, levaria mais de 100 anos para concluir.')
   }
   if (a.faltariaNaData !== null && a.faltariaNaData > 0) {
     frases.push(
@@ -117,11 +121,17 @@ function Simulacao({
         { alvo: meta.targetCents, reservado: meta.reservado, dataAlvo: meta.targetDate, hoje, diaInicio },
         valor,
       )
-      const inicio = `Com ${dinheiro(valor)} por mês, conclui em ${mesAno(s.mesProvavel!.inicio)}`
-      if (s.mesesDeDiferenca === null) resultado = `${inicio}.`
-      else if (s.mesesDeDiferenca === 0) resultado = `${inicio}, no mês da data-alvo.`
-      else if (s.mesesDeDiferenca < 0) resultado = `${inicio}, ${meses(-s.mesesDeDiferenca)} antes da data-alvo.`
-      else resultado = `${inicio}, ${meses(s.mesesDeDiferenca)} depois da data-alvo.`
+      if (s.mesProvavel === null) {
+        // Contribuição minúscula perto do alvo: passa do limite de 100 anos
+        // (achado em revisão) e não dá para estimar o mês provável.
+        resultado = `Com ${dinheiro(valor)} por mês, levaria mais de 100 anos para concluir.`
+      } else {
+        const inicio = `Com ${dinheiro(valor)} por mês, conclui em ${mesAno(s.mesProvavel.inicio)}`
+        if (s.mesesDeDiferenca === null) resultado = `${inicio}.`
+        else if (s.mesesDeDiferenca === 0) resultado = `${inicio}, no mês da data-alvo.`
+        else if (s.mesesDeDiferenca < 0) resultado = `${inicio}, ${meses(-s.mesesDeDiferenca)} antes da data-alvo.`
+        else resultado = `${inicio}, ${meses(s.mesesDeDiferenca)} depois da data-alvo.`
+      }
     }
   }
 
@@ -252,9 +262,11 @@ export default async function PaginaMeta({
                   <dt className="text-slate-600">Ritmo usado</dt>
                   <dd className="font-medium text-slate-900">
                     {ritmo}
-                    {a.mesProvavel && a.ritmo && (
+                    {a.ritmo && (
                       <span className="block font-normal text-slate-600">
-                        Mês provável: {mesAno(a.mesProvavel.inicio)} (estimativa)
+                        {a.mesProvavel
+                          ? `Mês provável: ${mesAno(a.mesProvavel.inicio)} (estimativa)`
+                          : 'Nesse ritmo, levaria mais de 100 anos'}
                       </span>
                     )}
                   </dd>

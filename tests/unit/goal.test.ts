@@ -4,6 +4,7 @@ import { isoDate } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
 import type { Cents } from '../../src/domain/types'
 import {
+  LIMITE_MESES,
   contribuicaoNecessaria,
   mesesRestantes,
   mesProvavel,
@@ -166,6 +167,31 @@ describe('mesProvavel', () => {
   it('falta exige mais períodos', () => {
     const r: Ritmo = { origem: 'media', valor: cents(500_00) }
     expect(mesProvavel(cents(1_000_00), r, hoje, diaInicio)).toEqual({ inicio: '2026-11-01', fim: '2026-11-30' })
+  })
+
+  // Achado em revisão: ritmo minúsculo numa meta grande (R$ 100.000 a R$ 1,00/mês)
+  // exigiria 100.000 passos de `proximoPeriodo` — trava o render. O limite de
+  // 100 anos (1200 meses) corta isso sem afetar nenhuma meta plausível; o ritmo
+  // em si continua existindo, só a data vira "não dá para estimar".
+  it('ritmo minúsculo numa meta grande: além do limite de 100 anos, nulo e rápido', () => {
+    const inicio = Date.now()
+    const r: Ritmo = { origem: 'media', valor: cents(1) }
+    const resultado = mesProvavel(cents(100_000_00), r, hoje, diaInicio)
+    expect(resultado).toBeNull()
+    expect(Date.now() - inicio).toBeLessThan(500)
+  }, 1000)
+
+  it('no limite exato (LIMITE_MESES meses): ainda estima', () => {
+    const r: Ritmo = { origem: 'media', valor: cents(1) }
+    // falta = LIMITE_MESES centavos -> mesesParaConcluir = LIMITE_MESES, no limite.
+    const resultado = mesProvavel(cents(LIMITE_MESES), r, hoje, diaInicio)
+    expect(resultado).not.toBeNull()
+  })
+
+  it('um mês além do limite: nulo', () => {
+    const r: Ritmo = { origem: 'media', valor: cents(1) }
+    const resultado = mesProvavel(cents(LIMITE_MESES + 1), r, hoje, diaInicio)
+    expect(resultado).toBeNull()
   })
 })
 

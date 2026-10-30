@@ -50,6 +50,17 @@ describe('avaliarMeta: sem prazo', () => {
     const r = avaliarMeta(entrada({ reservado: cents(2_000_00), movimentos: [] }))
     expect(r.situacao).toBe('sem_prazo')
   })
+
+  it('sem data-alvo, ritmo minúsculo além do limite de 100 anos: sem_prazo, mesProvavel nulo, rápido', () => {
+    const inicio = Date.now()
+    const r = avaliarMeta(
+      entrada({ alvo: cents(100_000_00), reservado: cents(0), planejado: cents(1) }),
+    )
+    expect(r.situacao).toBe('sem_prazo')
+    expect(r.mesProvavel).toBeNull()
+    expect(r.ritmo).not.toBeNull()
+    expect(Date.now() - inicio).toBeLessThan(500)
+  }, 1000)
 })
 
 describe('avaliarMeta: prazo vencido', () => {
@@ -150,6 +161,30 @@ describe('avaliarMeta: fora do prazo', () => {
     )
     expect(r.mesesDeAtraso).toBeGreaterThan(0)
   })
+
+  // Achado em revisão: ritmo minúsculo (R$ 0,01/mês) numa meta grande, com
+  // data-alvo, precisa continuar fora_do_prazo sem travar — mudarData e
+  // mesesDeAtraso ficam nulos (não dá para estimar o mês provável), mas
+  // faltariaNaData continua calculada (falta − ritmo × meses).
+  it('ritmo minúsculo além do limite, com data-alvo: fora_do_prazo, mesProvavel/mudarData/mesesDeAtraso nulos, rápido', () => {
+    const inicio = Date.now()
+    const r = avaliarMeta(
+      entrada({
+        alvo: cents(100_000_00),
+        reservado: cents(0),
+        dataAlvo: isoDate('2027-01-10'),
+        planejado: cents(1),
+      }),
+    )
+    expect(r.situacao).toBe('fora_do_prazo')
+    expect(r.mesProvavel).toBeNull()
+    expect(r.ritmo).not.toBeNull()
+    expect(r.opcoes?.mudarData).toBeNull()
+    expect(r.mesesDeAtraso).toBeNull()
+    expect(r.faltariaNaData).not.toBeNull()
+    expect(r.faltariaNaData).toBeGreaterThan(0)
+    expect(Date.now() - inicio).toBeLessThan(500)
+  }, 1000)
 })
 
 describe('avaliarMeta: no prazo', () => {
@@ -243,6 +278,20 @@ describe('simular', () => {
     // mesesRestantes de hoje (15/10) até 15/11, dia_inicio 1 = 2 períodos (out, nov)
     expect(r.faltariaNaData).toBe(Math.max(0, 8_000_00 - 1_000_00 * 2))
   })
+
+  // Achado em revisão: simular com uma contribuição minúscula numa meta grande
+  // (ex.: "1,00" numa meta de R$ 100.000) não pode travar nem lançar ao tentar
+  // ler `mesProvavel!.inicio` quando o resultado é nulo (além do limite).
+  it('contribuição minúscula além do limite: mesProvavel e mesesDeDiferenca nulos, rápido', () => {
+    const inicio = Date.now()
+    const r = simular(
+      { alvo: cents(100_000_00), reservado: cents(0), dataAlvo: isoDate('2027-01-10'), hoje, diaInicio },
+      cents(1),
+    )
+    expect(r.mesProvavel).toBeNull()
+    expect(r.mesesDeDiferenca).toBeNull()
+    expect(Date.now() - inicio).toBeLessThan(500)
+  }, 1000)
 })
 
 // Fix de 6.4 (commit c7660c6): spec 3.4 é vinculante — o período que contém a

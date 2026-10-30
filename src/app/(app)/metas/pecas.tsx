@@ -53,9 +53,13 @@ export function textoSituacaoMeta(avaliacao: AvaliacaoMeta, dataAlvo: IsoDate | 
     case 'no_prazo':
       return `No ritmo atual, conclui em ${mesAno(avaliacao.mesProvavel!.inicio)}`
     case 'sem_prazo':
-      return avaliacao.ritmo && avaliacao.mesProvavel
+      if (!avaliacao.ritmo) return 'Sem data-alvo'
+      // Ritmo existe, mas pode ser minúsculo demais para estimar uma data
+      // (acima do limite de 100 anos, spec 6.3 com o limite do achado em
+      // revisão): nunca confundir com "sem ritmo para estimar a data".
+      return avaliacao.mesProvavel
         ? `Sem data-alvo; no ritmo atual, conclui em ${mesAno(avaliacao.mesProvavel.inicio)}`
-        : 'Sem data-alvo'
+        : 'Sem data-alvo; no ritmo atual, levaria mais de 100 anos'
   }
 }
 

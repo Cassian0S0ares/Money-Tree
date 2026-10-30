@@ -1,4 +1,4 @@
-import { periodoAnterior, periodosEntre, proximoPeriodo, type Periodo } from './budget'
+import { periodoAnterior, proximoPeriodo, type Periodo } from './budget'
 import { mesFinanceiro } from './dates'
 import { cents } from './money'
 import type { Cents, IsoDate } from './types'
@@ -51,10 +51,17 @@ export function progresso(
  * (spec 3.4). Data-alvo antes de `hoje` é prazo vencido e conta 0, mesmo que
  * caia dentro do período atual: "restante" não pode ser positivo para um
  * prazo que já passou.
+ *
+ * Calculado direto da diferença de meses entre os dois períodos (ver
+ * `diferencaEmPeriodos`), em vez de empilhar período por período: uma
+ * data-alvo muito distante (o ano vai até 9999, ~95 mil meses) não pode
+ * travar o cálculo.
  */
 export function mesesRestantes(hoje: IsoDate, dataAlvo: IsoDate, diaInicio: number): number {
   if (dataAlvo < hoje) return 0
-  return periodosEntre(hoje, dataAlvo, diaInicio).length
+  const atual = mesFinanceiro(hoje, diaInicio)
+  const doAlvo = mesFinanceiro(dataAlvo, diaInicio)
+  return diferencaEmPeriodos(atual, doAlvo) + 1
 }
 
 /**
@@ -106,9 +113,20 @@ export function ritmo(
 }
 
 /**
+ * Limite de meses para estimar o mês provável: 100 anos (achado em revisão).
+ * Sem isto, um ritmo minúsculo numa meta grande (R$ 1/mês numa meta de
+ * R$ 100.000) faria o loop abaixo rodar 100.000 vezes — trava o render de
+ * `/metas`, `/metas/[id]` e a simulação. Nenhuma meta plausível passa de 100
+ * anos; além do limite a estimativa deixa de existir (`null`), mas o ritmo em
+ * si continua sendo o que é (não é "sem ritmo").
+ */
+export const LIMITE_MESES = 1200
+
+/**
  * O mês financeiro em que a meta deve fechar, no ritmo atual (spec 6.3).
  * Falta zero fecha já no período atual, mesmo sem ritmo definido. Sem ritmo
- * e com falta positiva, não há como estimar.
+ * e com falta positiva, não há como estimar. Acima de `LIMITE_MESES`,
+ * também não há como estimar (ver comentário do limite).
  */
 export function mesProvavel(falta: Cents, ritmo: Ritmo, hoje: IsoDate, diaInicio: number): Periodo | null {
   const atual = mesFinanceiro(hoje, diaInicio)
@@ -116,6 +134,8 @@ export function mesProvavel(falta: Cents, ritmo: Ritmo, hoje: IsoDate, diaInicio
   if (ritmo === null) return null
 
   const mesesParaConcluir = Math.ceil(falta / ritmo.valor)
+  if (mesesParaConcluir > LIMITE_MESES) return null
+
   let periodo = atual
   for (let i = 0; i < mesesParaConcluir - 1; i++) {
     periodo = proximoPeriodo(periodo, diaInicio)
@@ -151,26 +171,27 @@ export interface AvaliacaoMeta {
   opcoes: OpcoesPrazo | null
 }
 
-/** Conta passos de `proximoPeriodo`/`periodoAnterior` entre dois períodos; positivo quando `ate` vem depois de `de`. */
-function diferencaEmPeriodos(de: Periodo, ate: Periodo, diaInicio: number): number {
-  if (de.inicio === ate.inicio) return 0
+/**
+ * Índice do mês civil (ano × 12 + mês) do início de um período. `inicio` é
+ * sempre o próprio dia de virada dentro do mês civil que `mesFinanceiro`
+ * escolheu (com o dia truncado em meses curtos, nunca trocando de mês), então
+ * o ano e o mês de `inicio` identificam o período de forma direta.
+ */
+function indiceDoMes(data: IsoDate): number {
+  const ano = Number(data.slice(0, 4))
+  const mes = Number(data.slice(5, 7))
+  return ano * 12 + mes
+}
 
-  let passos = 0
-  if (de.inicio < ate.inicio) {
-    let periodo = de
-    while (periodo.inicio < ate.inicio) {
-      periodo = proximoPeriodo(periodo, diaInicio)
-      passos++
-    }
-    return passos
-  }
-
-  let periodo = de
-  while (periodo.inicio > ate.inicio) {
-    periodo = periodoAnterior(periodo, diaInicio)
-    passos++
-  }
-  return -passos
+/**
+ * Diferença em períodos entre `de` e `ate`; positivo quando `ate` vem depois
+ * de `de`. Cada passo de `proximoPeriodo`/`periodoAnterior` avança exatamente
+ * um mês civil, então a diferença sai direto da data, sem empilhar período
+ * por período — o que travaria com uma data-alvo muito distante (achado em
+ * revisão: o ano de `IsoDate` vai até 9999, ~95 mil meses de distância).
+ */
+function diferencaEmPeriodos(de: Periodo, ate: Periodo): number {
+  return indiceDoMes(ate.inicio) - indiceDoMes(de.inicio)
 }
 
 /**
@@ -231,11 +252,13 @@ export function avaliarMeta(e: {
   // O período que contém a data-alvo conta como mês de contribuição por
   // inteiro (spec 3.4, vinculante — fix de 6.4 no commit c7660c6): fora do
   // prazo é o mês provável *começar* depois da data-alvo, não terminar
-  // depois dela. Início igual à data-alvo ainda está no prazo.
+  // depois dela. Início igual à data-alvo ainda está no prazo. Sem ritmo ou
+  // com o mês provável além do limite de 100 anos (ritmo existe, mas é
+  // minúsculo demais para estimar), também é fora do prazo.
   let situacao: SituacaoMeta
   if (dataAlvo < hoje) {
     situacao = 'prazo_vencido'
-  } else if (r === null || provavel!.inicio > dataAlvo) {
+  } else if (r === null || provavel === null || provavel.inicio > dataAlvo) {
     situacao = 'fora_do_prazo'
   } else {
     situacao = 'no_prazo'
@@ -248,8 +271,8 @@ export function avaliarMeta(e: {
   if (situacao === 'fora_do_prazo' || situacao === 'prazo_vencido') {
     faltariaNaData = r === null ? falta : cents(Math.max(0, falta - r.valor * restantes))
 
-    if (situacao === 'fora_do_prazo' && r !== null) {
-      mesesDeAtraso = diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel!, diaInicio)
+    if (situacao === 'fora_do_prazo' && r !== null && provavel !== null) {
+      mesesDeAtraso = diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel)
     }
 
     opcoes =
@@ -262,7 +285,7 @@ export function avaliarMeta(e: {
         : {
             aumentarContribuicao: necessariaVal,
             reduzirAlvo: r === null ? reservado : cents(reservado + r.valor * restantes),
-            mudarData: r === null ? null : provavel!.fim,
+            mudarData: r === null || provavel === null ? null : provavel.fim,
           }
   }
 
@@ -302,7 +325,7 @@ export function simular(
   const restantes = mesesRestantes(hoje, dataAlvo, diaInicio)
   const faltariaNaData = cents(Math.max(0, falta - contribuicao * restantes))
   const mesesDeDiferenca =
-    contribuicao > 0 ? diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel!, diaInicio) : null
+    contribuicao > 0 && provavel !== null ? diferencaEmPeriodos(mesFinanceiro(dataAlvo, diaInicio), provavel) : null
 
   return { mesProvavel: provavel, mesesDeDiferenca, faltariaNaData }
 }
