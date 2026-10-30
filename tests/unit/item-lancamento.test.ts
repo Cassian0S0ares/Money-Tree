@@ -2,6 +2,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ItemLancamento } from '../../src/components/item-lancamento'
+import { MetasResumo } from '../../src/components/metas-resumo'
+import type { MetaAvaliada } from '../../src/data/goals'
+import { avaliarMeta } from '../../src/domain/goal'
 import type { Lancamento } from '../../src/data/transactions'
 import { isoDate } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
@@ -52,5 +55,41 @@ describe('AMEAÇA T5: XSS em texto do usuário', () => {
     // "onerror=" pode aparecer como texto escapado; dentro de uma tag, não.
     expect(html).not.toMatch(/<[^>]*\sonerror=/)
     expect(html).toContain('&lt;script&gt;alert(2)&lt;/script&gt;')
+  })
+
+  it('nome de meta e de conta maliciosos saem como texto, também no aria-label', () => {
+    const alvo = cents(100_000)
+    const reservado = cents(150_000)
+    const meta: MetaAvaliada = {
+      id: '00000000-0000-0000-0000-000000000002',
+      name: CARGA,
+      kind: 'viagem',
+      targetCents: alvo,
+      targetDate: null,
+      priority: 'alta',
+      accountId: null,
+      monthlyContributionCents: null,
+      completedAt: null,
+      archivedAt: null,
+      reservado,
+      // Reserva acima do saldo, para o nome da conta aparecer no aviso.
+      reservasPorConta: [{ accountId: 'a', accountName: CARGA, reservado, acimaDoSaldo: cents(500) }],
+      avaliacao: avaliarMeta({
+        alvo, reservado, dataAlvo: null, planejado: null, movimentos: [],
+        hoje: isoDate('2026-10-20'), diaInicio: 1,
+      }),
+    }
+    const html = renderToStaticMarkup(createElement(MetasResumo, { ativas: [meta] }))
+
+    expect(html).not.toContain('<script')
+    expect(html).not.toContain('<img')
+    // Aqui a carga também vai para um atributo (aria-label da barra), então
+    // "onerror=" aparece dentro de uma tag, mas como valor entre aspas: o que
+    // não pode existir é o atributo de verdade, seguido de aspas cruas.
+    expect(html).not.toMatch(/\sonerror="/)
+    // No texto do link, no aviso da conta e no atributo da barra.
+    expect(html.split('&lt;script&gt;alert(2)&lt;/script&gt;').length - 1).toBe(3)
+    // No atributo, com as aspas escapadas: a carga não fecha o valor.
+    expect(html).toContain('aria-label="Reservado para &lt;img src=x onerror=&quot;alert(1)&quot;&gt;')
   })
 })

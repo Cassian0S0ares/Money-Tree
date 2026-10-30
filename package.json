@@ -11,6 +11,7 @@
     "test:watch": "vitest --project unit",
     "test:integration": "vitest run --project integration",
     "migrate": "tsx scripts/migrate.ts",
+    "usuario:criar": "tsx --env-file=.env scripts/criar-usuario.ts",
     "seguranca:segredos": "tsx scripts/verificar-segredos.ts",
     "seguranca:auditoria": "node scripts/auditoria.mjs",
     "typecheck": "tsc --noEmit"

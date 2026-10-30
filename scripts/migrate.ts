@@ -31,7 +31,7 @@ execFileSync(
     '--migration-file-language',
     'sql',
     '--envPath',
-    '.env.local',
+    '.env',
   ],
   { stdio: 'inherit', env: { ...process.env, DATABASE_URL: url }, shell: true },
 )
