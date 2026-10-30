@@ -87,3 +87,9 @@ export function rotuloPeriodo(inicio: IsoDate, fim: IsoDate): string {
   const anoDe = de.ano === ate.ano ? '' : ` de ${de.ano}`
   return `${Number(de.dia)} de ${MESES[de.mes - 1]}${anoDe} a ${Number(ate.dia)} de ${MESES[ate.mes - 1]} de ${ate.ano}`
 }
+
+/** Mês e ano de uma data ("março de 2028"), para o mês provável das metas. */
+export function mesAno(data: IsoDate): string {
+  const { mes, ano } = partes(data)
+  return `${MESES[mes - 1]} de ${ano}`
+}

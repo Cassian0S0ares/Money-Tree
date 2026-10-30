@@ -14,7 +14,7 @@ Cada mitigação listada aqui precisa de teste automatizado ou procedimento veri
 |---|---|---|
 | Razão de lançamentos | Postgres (Supabase, `sa-east-1`) | Retrato completo da vida financeira do usuário |
 | Saldos e contas | Postgres | Revelam patrimônio e instituições usadas |
-| Credencial do banco | `.env.local` na máquina do desenvolvedor | Acesso total ao razão |
+| Credencial do banco | `.env` na máquina do desenvolvedor | Acesso total ao razão |
 | Hash de senha do usuário | Tabela `users` | Reuso de senha em outros serviços |
 | Cookie de sessão | Navegador do usuário | Sequestro de conta |
 | Trilha de auditoria | Tabela `audit_events` | Não repúdio; alvo de adulteração |
@@ -35,7 +35,7 @@ Cada mitigação listada aqui precisa de teste automatizado ou procedimento veri
 ```
 Navegador  ──①──  Servidor Next.js  ──②──  Supavisor (pooler)  ──③──  Postgres
     │                    │
-    └── extensões        └── .env.local, sistema de arquivos local
+    └── extensões        └── .env, sistema de arquivos local
 ```
 
 1. **Navegador → servidor:** tudo que chega é não confiável, inclusive o que o próprio formulário enviou.
@@ -54,11 +54,11 @@ Quarta fronteira, implícita: **Git**. Somente código e documentação atravess
 |---|---|---|---|---|
 | T1 | Sequestro de sessão por roubo de token | Falsificação | Cookie `HttpOnly`/`Secure`/`SameSite=Lax`; nada em `localStorage`; rotação do ID ao autenticar | `tests/unit/cookie-sessao.test.ts` (HttpOnly, SameSite=Lax, Secure em produção, validade) e `tests/unit/entrar-rotacao.test.ts` (o token anterior é revogado ao entrar) |
 | T2 | Força bruta na senha | Falsificação | argon2id com parâmetros versionados; limitação de tentativas por conta e por origem | `tests/unit/rate-limit.test.ts` e `tests/unit/entrar-limite-origem.test.ts`: 5 falhas por conta, 20 por origem, e sucesso não zera a origem. Limitações aceitas: contagem em memória (zera ao reiniciar, não vale entre instâncias) e IP lido de `x-forwarded-for`, confiável só atrás de proxy que o reescreve |
-| T3 | Um usuário lê dado de outro | Elevação de privilégio | `FORCE ROW LEVEL SECURITY`; role `money_tree_app` sem bypass; `SET LOCAL app.user_id` por transação | `tests/integration/001-base.test.ts`, `with-user.test.ts`, `004-saldos-transferencia.test.ts` (view com `security_invoker`), `auth.test.ts` (caminho anterior ao login), `010-orcamentos.test.ts` e `repo-budgets.test.ts` (orçamentos e limites) |
+| T3 | Um usuário lê dado de outro | Elevação de privilégio | `FORCE ROW LEVEL SECURITY`; role `money_tree_app` sem bypass; `SET LOCAL app.user_id` por transação | `tests/integration/001-base.test.ts`, `with-user.test.ts`, `004-saldos-transferencia.test.ts` (view com `security_invoker`), `auth.test.ts` (caminho anterior ao login), `010-orcamentos.test.ts` e `repo-budgets.test.ts` (orçamentos e limites), `011-metas.test.ts` e `repo-goals.test.ts` (metas e movimentos de reserva: um usuário não vê os do outro) |
 | T4 | Bug na aplicação esquece o filtro por usuário | Exposição | Mesma RLS de T3 — a defesa não depende do código da aplicação | `tests/integration/001-base.test.ts` e `auth.test.ts`: sem `app.user_id`, o role da aplicação não lê nenhuma linha |
-| T5 | XSS via descrição ou estabelecimento | Adulteração | Escape em toda renderização; texto do banco tratado como não confiável ao ser lido; CSP restritiva sem script remoto | `tests/unit/item-lancamento.test.ts` (carga de XSS renderizada sai escapada; conferido por mutação), `tests/unit/interface-proibicoes.test.ts` (sem `dangerouslySetInnerHTML`) e CSP com nonce em `src/middleware.ts` |
+| T5 | XSS via descrição, estabelecimento ou nome de meta | Adulteração | Escape em toda renderização; texto do banco tratado como não confiável ao ser lido; CSP restritiva sem script remoto | `tests/unit/item-lancamento.test.ts` (carga de XSS renderizada sai escapada no lançamento e no nome da meta, inclusive no `aria-label` da barra; conferido por mutação), `tests/unit/interface-proibicoes.test.ts` (sem `dangerouslySetInnerHTML`) e CSP com nonce em `src/middleware.ts` |
 | T6 | Apagar lançamento liquidado para esconder histórico | Repúdio | Gatilho de banco bloqueia `DELETE` em `liquidado`/`conciliado`/`estornado`; correção só via estorno vinculado | `tests/integration/003-transactions.test.ts` e `repo-transactions.test.ts` |
-| T7 | Valor financeiro vaza em log | Exposição | Logger com redação; `audit_events` sem valores nem descrições | `tests/integration/log-sem-valores.test.ts` (fluxo completo, recorrência, orçamento e erro de banco impresso inteiro, sem valor nem descrição; no orçamento, nem na trilha de auditoria), `tests/unit/logger.test.ts` (redação, inclusive `detail`/`query`/`parameters`), `tests/integration/004-saldos-transferencia.test.ts` e `audit.test.ts` |
+| T7 | Valor financeiro vaza em log | Exposição | Logger com redação; `audit_events` sem valores nem descrições | `tests/integration/log-sem-valores.test.ts` (fluxo completo, recorrência, orçamento, metas e erro de banco impresso inteiro, sem valor nem descrição; no orçamento e nas metas, nem na trilha de auditoria, que também não leva o nome da meta), `tests/unit/logger.test.ts` (redação, inclusive `detail`/`query`/`parameters`), `tests/integration/004-saldos-transferencia.test.ts` e `audit.test.ts` |
 | T8 | Credencial do banco commitada | Exposição | `.gitignore` antes do primeiro commit; `.env.example` só com placeholders; spec sem credencial nem ref do projeto | `scripts/verificar-segredos.ts` no CI e no pre-commit (`.githooks/pre-commit`, ativado com `git config core.hooksPath .githooks`); regras testadas em `tests/unit/verificar-segredos.test.ts` |
 | T9 | Saldo errado por ponto flutuante | Adulteração | `bigint` de centavos no banco; tipo marcado `Cents` no domínio; float proibido no módulo de dinheiro | `tests/unit/money.test.ts` e `balance.test.ts` (propriedades) |
 | T10 | Transferência grava um lado só | Adulteração | Função SQL cria os dois lados em uma transação | `tests/integration/004-saldos-transferencia.test.ts` e `acoes-lancamentos.test.ts` (estorno atinge os dois lados) |
@@ -70,8 +70,8 @@ Quarta fronteira, implícita: **Git**. Somente código e documentação atravess
 | T16 | Falsificação de requisição entre sites | Falsificação | Validação de origem das Server Actions do Next.js, mantida ligada; `SameSite=Lax` | `tests/unit/middleware.test.ts`: POST sem Origin, de outra origem ou de host parecido recebe 403; conferido também contra o servidor rodando |
 | T17 | Ocorrência recorrente duplicada por requisições simultâneas | Adulteração | Chave única por série, data nominal e direção, com `ON CONFLICT DO NOTHING`; linha da regra travada com `skip locked`; `generated_until` avança na mesma transação | `tests/integration/repo-recurrences.test.ts` (três gerações em paralelo; transferência repetida), `tests/integration/009-recorrencias.test.ts` (chave única) |
 | T18 | Regra que gera linhas sem fim esgota o banco | Indisponibilidade | Horizonte de 90 dias, no máximo 200 regras ativas por usuário e 1.000 ocorrências por chamada, continuando na seguinte | `tests/integration/repo-recurrences.test.ts` (201ª regra recusada; 1.092 ocorrências geradas em duas chamadas de 1.000 e 92) |
-| T19 | Edição de série ou de ocorrência reescreve histórico pago | Repúdio | `planejarEdicaoSerie` só substitui ocorrência prevista e não editada; gatilho `transactions_imutavel_apos_liquidar` recusa mudar qualquer coluna de linha liquidada, conciliada ou estornada | `tests/unit/recurrence-serie.test.ts` (propriedade), `tests/integration/repo-recurrences-serie.test.ts` (paga, pulada e editada atravessam um "desta em diante"), `tests/integration/007-imutabilidade.test.ts` |
-| T20 | Referência a conta, categoria, regra ou orçamento de outro usuário | Elevação de privilégio | A checagem de chave estrangeira ignora a RLS; todas as referências viraram chaves compostas `(coluna, user_id)` (migrações 008, 009 e 010), inclusive as da fatia 1 | `tests/integration/fk-cruzada.test.ts`, `tests/integration/009-recorrencias.test.ts`, `tests/integration/010-orcamentos.test.ts` (orçamento em categoria alheia; limite em orçamento alheio), `tests/integration/repo-budgets.test.ts` |
+| T19 | Edição de série ou de ocorrência reescreve histórico pago; movimento de reserva de meta alterado ou apagado | Repúdio | `planejarEdicaoSerie` só substitui ocorrência prevista e não editada; gatilho `transactions_imutavel_apos_liquidar` recusa mudar qualquer coluna de linha liquidada, conciliada ou estornada; `goal_allocations` é só inserção (sem `UPDATE` nem `DELETE` para `money_tree_app`, migração 011): corrigir é movimento oposto | `tests/unit/recurrence-serie.test.ts` (propriedade), `tests/integration/repo-recurrences-serie.test.ts` (paga, pulada e editada atravessam um "desta em diante"), `tests/integration/007-imutabilidade.test.ts`, `tests/integration/011-metas.test.ts` (`UPDATE` e `DELETE` recusados), `tests/integration/repo-goals.test.ts` (concluir e arquivar liberam a reserva preservando o histórico) |
+| T20 | Referência a conta, categoria, regra, orçamento ou meta de outro usuário | Elevação de privilégio | A checagem de chave estrangeira ignora a RLS; todas as referências viraram chaves compostas `(coluna, user_id)` (migrações 008, 009, 010 e 011), inclusive as da fatia 1 | `tests/integration/fk-cruzada.test.ts`, `tests/integration/009-recorrencias.test.ts`, `tests/integration/010-orcamentos.test.ts` (orçamento em categoria alheia; limite em orçamento alheio), `tests/integration/repo-budgets.test.ts`, `tests/integration/011-metas.test.ts` (conta padrão alheia na meta; movimento com conta ou meta alheia), `tests/integration/repo-goals.test.ts` |
 
 ---
 
@@ -80,7 +80,7 @@ Quarta fronteira, implícita: **Git**. Somente código e documentação atravess
 1. **O provedor enxerga tudo** (T15). Consequência direta de calcular saldo em SQL. Reavaliar se o produto migrar para banco local.
 2. **Sem internet, sem dado** (T14). Consequência direta de abandonar local-first.
 3. **Extensão maliciosa no navegador** lê a página autenticada. Fora do alcance de uma aplicação web; mitigado apenas por CSP e por não manter segredo no cliente.
-4. **Máquina do desenvolvedor comprometida** expõe `.env.local`. Mitigar com criptografia de disco e rotação da senha do banco ao menor sinal de exposição.
+4. **Máquina do desenvolvedor comprometida** expõe `.env`. Mitigar com criptografia de disco e rotação da senha do banco ao menor sinal de exposição.
 
 ---
 

@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/lancamentos', rotulo: 'Lançamentos' },
   { href: '/recorrencias', rotulo: 'Recorrências' },
   { href: '/orcamentos', rotulo: 'Orçamentos' },
+  { href: '/metas', rotulo: 'Metas' },
   { href: '/contas', rotulo: 'Contas' },
   { href: '/categorias', rotulo: 'Categorias' },
   { href: '/configuracoes', rotulo: 'Configurações' },

@@ -8,7 +8,7 @@
  *
  * Uso: node scripts/auditoria.mjs
  */
-import { execFileSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 
 const EXCECOES = {
   // PostCSS embutido no Next 15. Só processa o CSS do próprio projeto no
@@ -30,10 +30,13 @@ const GRAVES = new Set(['high', 'critical'])
 
 let bruto
 try {
-  bruto = execFileSync('npm', ['audit', '--json'], { encoding: 'utf8' })
+  // execSync passa pelo shell: no Windows o npm é npm.cmd, que execFileSync
+  // não encontra.
+  bruto = execSync('npm audit --json', { encoding: 'utf8' })
 } catch (erro) {
   // npm audit sai com código diferente de zero quando acha algo; o JSON vem
-  // do mesmo jeito.
+  // do mesmo jeito. Sem stdout, o npm nem rodou: o erro original explica.
+  if (!erro.stdout) throw erro
   bruto = erro.stdout
 }
 

@@ -15,20 +15,33 @@ import {
   pularOcorrencia,
 } from '../../src/data/recurrences'
 import { definirLimite, removerOrcamentoAcao } from '../../src/app/(app)/orcamentos/acoes'
+import { arquivar, concluir, registrarMovimento, salvarMeta } from '../../src/app/(app)/metas/acoes'
 import { log } from '../../src/lib/logger'
-import { isoDate } from '../../src/domain/dates'
+import { hojeEm, isoDate } from '../../src/domain/dates'
 import { cents } from '../../src/domain/money'
 
 const DESCRICAO = 'Farmacia-Sigilosa-7731'
 const VALOR = 987_654
 
-// As ações de orçamento rodam de verdade; só a sessão e o cache do Next são
-// trocados, porque fora de uma requisição não há cookie nem rota.
+// As ações de orçamento e de metas rodam de verdade; só a sessão, o cache e o
+// redirect do Next são trocados, porque fora de uma requisição não há cookie
+// nem rota.
 const sessao = vi.hoisted(() => ({ usuario: '' }))
 vi.mock('../../src/lib/session', () => ({
-  exigirUsuario: async () => ({ id: sessao.usuario, timezone: 'America/Sao_Paulo' }),
+  exigirUsuario: async () => ({ id: sessao.usuario, timezone: 'America/Sao_Paulo', monthStartDay: 1 }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => {
+    throw new Error(`REDIRECT:${url}`)
+  },
+}))
+
+function formulario(campos: Record<string, string>): FormData {
+  const dados = new FormData()
+  for (const [chave, valor] of Object.entries(campos)) dados.set(chave, valor)
+  return dados
+}
 
 let saida: string[] = []
 
@@ -135,11 +148,6 @@ describe('AMEAÇA T7: valor financeiro não vaza em log', () => {
     const usuario = await criarUsuario()
     sessao.usuario = usuario
     const categoria = await criarCategoria(usuario, { name: 'Saúde', kind: 'despesa' })
-    const formulario = (campos: Record<string, string>) => {
-      const dados = new FormData()
-      for (const [chave, valor] of Object.entries(campos)) dados.set(chave, valor)
-      return dados
-    }
 
     // 987.654 centavos digitados como o usuário digita: "9.876,54".
     const criado = await definirLimite({}, formulario({
@@ -170,6 +178,59 @@ describe('AMEAÇA T7: valor financeiro não vaza em log', () => {
     }
     // O identificador real do orçamento também não entra: só o pseudônimo.
     expect(trilha).not.toContain(orcamento.id)
+
+    semDadoFinanceiro()
+    expect(saida.join('\n')).not.toContain(String(VALOR + 1))
+  })
+
+  it('o fluxo de metas não escreve valor nem nome no log nem na trilha de auditoria', async () => {
+    const usuario = await criarUsuario()
+    sessao.usuario = usuario
+    const conta = await criarConta(usuario, {
+      name: 'Corrente', type: 'corrente',
+      initialBalanceCents: cents(5_000_000), initialBalanceDate: isoDate('2026-01-01'),
+    })
+    const hoje = hojeEm('America/Sao_Paulo')
+
+    // O nome da meta é texto do usuário: tratado como a descrição do lançamento.
+    const salvar = async (campos: Record<string, string>): Promise<string> => {
+      const erro = await salvarMeta({}, formulario({
+        name: DESCRICAO, kind: 'viagem', data: '', priority: 'alta',
+        accountId: conta.id, contribuicao: '', ...campos,
+      })).then(() => null, (e: Error) => e)
+      const casou = /^REDIRECT:\/metas\/([0-9a-f-]{36})$/.exec(erro?.message ?? '')
+      expect(casou).not.toBeNull()
+      return casou![1]
+    }
+    const movimento = (metaId: string, operacao: 'aporte' | 'resgate', valor: string) =>
+      registrarMovimento({}, formulario({ metaId, operacao, valor, accountId: conta.id, data: hoje }))
+
+    // 987.654 centavos digitados como o usuário digita: "9.876,54".
+    const concluida = await salvar({ alvo: '9.876,54' })
+    await salvar({ metaId: concluida, alvo: '9.876,55', contribuicao: '9.876,54', data: '2030-12-31' })
+    expect((await movimento(concluida, 'aporte', '9.876,55')).sucesso).toBe('Reserva registrada.')
+    expect((await movimento(concluida, 'resgate', '9.876,54')).sucesso).toBe('Resgate registrado.')
+    expect((await movimento(concluida, 'aporte', '9.876,54')).sucesso).toBe('Reserva registrada.')
+    await concluir(formulario({ id: concluida }))
+
+    const arquivada = await salvar({ alvo: '9.876,54' })
+    expect((await movimento(arquivada, 'aporte', '9.876,54')).sucesso).toBe('Reserva registrada.')
+    await arquivar(formulario({ id: arquivada }))
+
+    const eventos = await sqlAdmin<Record<string, unknown>[]>`
+      select * from audit_events order by occurred_at, event_type
+    `
+    expect(eventos.map((e) => e.event_type).sort()).toEqual([
+      'meta.alterada', 'meta.aporte', 'meta.aporte', 'meta.aporte', 'meta.arquivada',
+      'meta.concluida', 'meta.criada', 'meta.criada', 'meta.resgate',
+    ])
+    const trilha = JSON.stringify(eventos)
+    for (const proibido of [DESCRICAO, String(VALOR), String(VALOR + 1), '9.876,5']) {
+      expect(trilha).not.toContain(proibido)
+    }
+    // Os identificadores reais das metas também não entram: só o pseudônimo.
+    expect(trilha).not.toContain(concluida)
+    expect(trilha).not.toContain(arquivada)
 
     semDadoFinanceiro()
     expect(saida.join('\n')).not.toContain(String(VALOR + 1))

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { listarContasComSaldo } from '../../../data/accounts'
+import { reservasPorConta } from '../../../data/goals'
+import { cents } from '../../../domain/money'
 import { exigirUsuario } from '../../../lib/session'
-import { rotuloTipoConta } from '../../../lib/format'
+import { dinheiro, rotuloTipoConta } from '../../../lib/format'
 import { SemDados } from '../../../components/states'
 import { FormularioConfirmado } from '../../../components/formulario-confirmado'
 import { CabecalhoPagina, Cartao, LinkBotao, SeloEstimado, Valor } from '../../../components/ui'
@@ -9,9 +11,29 @@ import { arquivar } from './acoes'
 
 export const metadata = { title: 'Contas' }
 
+/** Quanto da conta está reservado para metas (spec da fatia 4, seções 3.3 e 8). */
+function Reservado({ reservado, saldo }: { reservado: number; saldo: number }) {
+  if (reservado <= 0) return null
+  const acima = reservado - saldo
+  return (
+    <>
+      <p className="text-xs text-slate-600">{dinheiro(cents(reservado))} reservado para metas</p>
+      {acima > 0 && (
+        <p className="text-xs font-medium text-amber-800">
+          <span aria-hidden="true">⚠ </span>
+          Reservado maior que o saldo da conta em {dinheiro(cents(acima))}
+        </p>
+      )}
+    </>
+  )
+}
+
 export default async function PaginaContas() {
   const usuario = await exigirUsuario()
-  const contas = await listarContasComSaldo(usuario.id)
+  const [contas, reservas] = await Promise.all([
+    listarContasComSaldo(usuario.id),
+    reservasPorConta(usuario.id),
+  ])
 
   return (
     <section>
@@ -58,6 +80,7 @@ export default async function PaginaContas() {
                   ) : (
                     <p className="text-xs text-marca-700">✓ Conciliada</p>
                   )}
+                  <Reservado reservado={reservas.get(conta.id) ?? 0} saldo={conta.balanceCents} />
                 </div>
 
                 <div className="flex flex-wrap gap-2">
