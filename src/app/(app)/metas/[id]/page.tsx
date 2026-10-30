@@ -20,7 +20,7 @@ import {
   TipoMeta,
   meses,
   textoRitmo,
-} from '../pecas'
+} from '../../../../components/meta'
 
 export const metadata = { title: 'Meta' }
 

@@ -1,11 +1,12 @@
-import type { AvaliacaoMeta, GoalKind, GoalPriority, SituacaoMeta } from '../../../domain/goal'
-import type { Cents, IsoDate } from '../../../domain/types'
-import { dataLonga, dinheiro, mesAno } from '../../../lib/format'
+import type { AvaliacaoMeta, GoalKind, GoalPriority, SituacaoMeta } from '../domain/goal'
+import type { Cents, IsoDate } from '../domain/types'
+import { dataLonga, dinheiro, mesAno } from '../lib/format'
 
 /**
  * Peças das telas de metas (spec da fatia 4, seções 6.3, 6.7 e 8). O tipo
  * da meta é só rótulo e ícone; a situação vem sempre com ícone e texto,
- * nunca só cor (§14).
+ * nunca só cor (§14). Ficam em `src/components` (não na rota `/metas`)
+ * porque o cartão da tela inicial também as usa.
  */
 
 export const TIPOS_META: Record<GoalKind, { rotulo: string; icone: string }> = {

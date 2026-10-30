@@ -5,7 +5,7 @@ import { exigirUsuario } from '../../../lib/session'
 import { dinheiro, mesAno } from '../../../lib/format'
 import { SemDados } from '../../../components/states'
 import { CabecalhoPagina, Cartao, LinkBotao } from '../../../components/ui'
-import { AvisosAcimaDoSaldo, BarraMeta, SituacaoDaMeta, TipoMeta, TIPOS_META } from './pecas'
+import { AvisosAcimaDoSaldo, BarraMeta, SituacaoDaMeta, TipoMeta, TIPOS_META } from '../../../components/meta'
 
 export const metadata = { title: 'Metas' }
 

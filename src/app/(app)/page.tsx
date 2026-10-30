@@ -2,8 +2,10 @@ import Link from 'next/link'
 import { listarContasComSaldo } from '../../data/accounts'
 import { listarLancamentos } from '../../data/transactions'
 import { proximasContas } from '../../data/recurrences'
+import { listarMetas } from '../../data/goals'
 import { ProximasContas } from '../../components/proximas-contas'
 import { OrcamentoResumo } from '../../components/orcamento-resumo'
+import { MetasResumo } from '../../components/metas-resumo'
 import { resumoOrcamento } from '../../data/budgets'
 import { mesFinanceiro } from '../../domain/dates'
 import { somarSaldos } from '../../domain/balance'
@@ -22,12 +24,13 @@ const DIAS_PROXIMAS = 30
 export default async function PaginaSaldos() {
   const usuario = await exigirUsuario()
   const hoje = hojeEm(usuario.timezone)
-  const [contas, recentes, proximas] = await Promise.all([
+  const [contas, recentes, proximas, metas] = await Promise.all([
     listarContasComSaldo(usuario.id),
     // "Últimos" é até hoje: sem o corte, as ocorrências previstas dos
     // próximos meses tomariam a lista.
     listarLancamentos(usuario.id, { limite: 5, ate: hoje }),
     proximasContas(usuario.id, hoje, DIAS_PROXIMAS),
+    listarMetas(usuario.id, hoje, usuario.monthStartDay),
   ])
   const orcamento = await resumoOrcamento(usuario.id, mesFinanceiro(hoje, usuario.monthStartDay), hoje, usuario.monthStartDay)
 
@@ -91,6 +94,8 @@ export default async function PaginaSaldos() {
       />
 
       <OrcamentoResumo itens={orcamento.itens} />
+
+      <MetasResumo ativas={metas.ativas} />
 
       <section aria-labelledby="titulo-contas">
         <div className="mb-3 flex items-center justify-between">

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { salvarMeta, type EstadoMeta } from './acoes'
-import { PRIORIDADES, TIPOS_META } from './pecas'
+import { PRIORIDADES, TIPOS_META } from '../../../components/meta'
 import { Aviso, Cartao, Dica, Rotulo, classeEntrada, classesBotao } from '../../../components/ui'
 
 export interface ValoresMeta {
